@@ -1,0 +1,15 @@
+[project]
+name = "qick"
+version = "0.1.0"
+description = "A modified version of the qick library"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = ["pyro4", "numpy", "tqdm", "dill"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "lib" }
+packages = ["qick"]

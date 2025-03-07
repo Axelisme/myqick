@@ -1,11 +1,16 @@
 """
 Support classes for dealing with FPGA IP blocks.
 """
-from pynq.overlay import DefaultIP
-import numpy as np
+
 import logging
-from qick import obtain
+
+import numpy as np
+from pynq.overlay import DefaultIP
+
+from myqick import obtain
+
 from .qick_asm import DummyIp
+
 
 class SocIp(DefaultIP, DummyIp):
     """
@@ -24,9 +29,9 @@ class SocIp(DefaultIP, DummyIp):
         DefaultIP.__init__(self, description)
 
         # this block's unique identifier in the firmware
-        self.fullpath = description['fullpath']
+        self.fullpath = description["fullpath"]
         # this block's type
-        self.type = description['type'].split(':')[-2]
+        self.type = description["type"].split(":")[-2]
         DummyIp.__init__(self, self.type, self.fullpath)
 
     def __setattr__(self, a, v):
@@ -38,7 +43,7 @@ class SocIp(DefaultIP, DummyIp):
         :param v: value to be written
         :type v: int
         """
-        if a!='REGISTERS' and hasattr(self, 'REGISTERS') and a in self.REGISTERS:
+        if a != "REGISTERS" and hasattr(self, "REGISTERS") and a in self.REGISTERS:
             index = self.REGISTERS[a]
             self.mmio.array[index] = np.uint32(obtain(v))
         else:
@@ -53,17 +58,19 @@ class SocIp(DefaultIP, DummyIp):
         :return: Register arguments
         :rtype: *args object
         """
-        if a!='REGISTERS' and hasattr(self, 'REGISTERS') and a in self.REGISTERS:
+        if a != "REGISTERS" and hasattr(self, "REGISTERS") and a in self.REGISTERS:
             index = self.REGISTERS[a]
             return self.mmio.array[index]
         else:
             return super().__getattribute__(a)
+
 
 class QickMetadata:
     """
     Provides information about the connections between IP blocks, extracted from the HWH file.
     The HWH parser is very different between PYNQ 2.6/2.7 and 3.0+, so this class serves as a common interface.
     """
+
     def __init__(self, soc):
         # We will use the HWH parser to extract information about signal connections between blocks.
         # system graph object, if available
@@ -74,7 +81,7 @@ class QickMetadata:
         self.sigparser = None
         self.busparser = None
 
-        if hasattr(soc, 'systemgraph'):
+        if hasattr(soc, "systemgraph"):
             # PYNQ 3.0 and higher have a "system graph"
             self.systemgraph = soc.systemgraph
             self.xml = soc.systemgraph._root
@@ -85,10 +92,10 @@ class QickMetadata:
         # TODO: We shouldn't need to use BusParser for PYNQ 3.0, but we think there's a bug in how pynqmetadata handles axis_switch.
         self.busparser = BusParser(self.xml)
 
-        self.timestamp = self.xml.get('TIMESTAMP')
+        self.timestamp = self.xml.get("TIMESTAMP")
 
     def get_systemgraph_block(self, blockname):
-        return self.systemgraph.blocks[blockname.replace('/','_')]
+        return self.systemgraph.blocks[blockname.replace("/", "_")]
 
     def trace_sig(self, blockname, portname):
         if self.systemgraph is not None:
@@ -96,7 +103,7 @@ class QickMetadata:
             result = []
             for port, block in dests.items():
                 blockname = block.parent().name
-                if blockname==self.systemgraph.name:
+                if blockname == self.systemgraph.name:
                     result.append([port])
                 else:
                     result.append([blockname, port])
@@ -121,13 +128,17 @@ class QickMetadata:
         :return: a list of [block, port] pairs, or just [port] for ports of the top-level design
         :rtype: list
         """
-        fullport = blockname+"/"+portname
+        fullport = blockname + "/" + portname
         # the net connected to this port
         netname = parser.pins[fullport]
-        if netname == '__NOC__':
+        if netname == "__NOC__":
             return []
         # get the list of other ports on this net, discard the port we started at and ILA ports
-        return [x.rsplit('/', maxsplit=1) for x in parser.nets[netname] if x != fullport and 'system_ila_' not in x]
+        return [
+            x.rsplit("/", maxsplit=1)
+            for x in parser.nets[netname]
+            if x != fullport and "system_ila_" not in x
+        ]
 
     def get_fclk(self, blockname, portname):
         """
@@ -143,9 +154,10 @@ class QickMetadata:
         :rtype: float
         """
         xmlpath = "./MODULES/MODULE[@FULLNAME='/{0}']/PORTS/PORT[@NAME='{1}']".format(
-            blockname, portname)
+            blockname, portname
+        )
         port = self.xml.find(xmlpath)
-        return float(port.get('CLKFREQUENCY'))/1e6
+        return float(port.get("CLKFREQUENCY")) / 1e6
 
     def get_param(self, blockname, parname):
         """
@@ -161,9 +173,10 @@ class QickMetadata:
         :rtype: str
         """
         xmlpath = "./MODULES/MODULE[@FULLNAME='/{0}']/PARAMETERS/PARAMETER[@NAME='{1}']".format(
-            blockname, parname)
+            blockname, parname
+        )
         param = self.xml.find(xmlpath)
-        return param.get('VALUE')
+        return param.get("VALUE")
 
     def mod2type(self, blockname):
         if self.systemgraph is not None:
@@ -204,23 +217,31 @@ class QickMetadata:
         while True:
             trace_result = self.trace_bus(next_block, next_port)
             # if we hit an unconnected port, return False
-            if len(trace_result)==0:
+            if len(trace_result) == 0:
                 return None
             ((next_block, port),) = trace_result
             next_type = self.mod2type(next_block)
             if next_type in goal_types:
                 return (next_block, port, next_type)
-            elif next_type in ["axis_clock_converter", "axis_dwidth_converter", "axis_register_slice", "axis_broadcaster"]:
-                next_port = 'S_AXIS'
+            elif next_type in [
+                "axis_clock_converter",
+                "axis_dwidth_converter",
+                "axis_register_slice",
+                "axis_broadcaster",
+            ]:
+                next_port = "S_AXIS"
             elif next_type == "axis_cdcsync_v1":
                 # port name is of the form 'm4_axis' - follow corresponding input 's4_axis'
-                next_port = 's'+port[1:]
+                next_port = "s" + port[1:]
             elif next_type == "sg_translator":
-                next_port = 's_tproc_axis'
+                next_port = "s_tproc_axis"
             elif next_type == "axis_resampler_2x1_v1":
-                next_port = 's_axis'
+                next_port = "s_axis"
             else:
-                raise RuntimeError("failed to trace back from %s - unrecognized IP block %s" % (start_block, next_block))
+                raise RuntimeError(
+                    "failed to trace back from %s - unrecognized IP block %s"
+                    % (start_block, next_block)
+                )
 
     def trace_forward(self, start_block, start_port, goal_types):
         """Follow the AXI-Stream bus forwards from a given block and port.
@@ -256,7 +277,7 @@ class QickMetadata:
             if blocktype in goal_types:
                 found.append((block, port, blocktype))
             elif blocktype == "axis_broadcaster":
-                for iOut in range(int(self.get_param(block, 'NUM_MI'))):
+                for iOut in range(int(self.get_param(block, "NUM_MI"))):
                     to_check.append((block, "M%02d_AXIS" % (iOut)))
             elif blocktype == "axis_clock_converter":
                 to_check.append((block, "M_AXIS"))
@@ -267,13 +288,16 @@ class QickMetadata:
             else:
                 dead_ends.append(block)
         if len(found) != 1:
-            raise RuntimeError("traced forward from %s for one block of type %s, but found %s (and dead ends %s)" % (start_block, goal_types, found, dead_ends))
+            raise RuntimeError(
+                "traced forward from %s for one block of type %s, but found %s (and dead ends %s)"
+                % (start_block, goal_types, found, dead_ends)
+            )
         return found[0]
 
 
 class BusParser:
-    """Parses the HWH XML file to extract information on the buses connecting IP blocks.
-    """
+    """Parses the HWH XML file to extract information on the buses connecting IP blocks."""
+
     def __init__(self, root):
         """
         Matching all the buses in the modules from the HWH file.
@@ -289,18 +313,16 @@ class BusParser:
         self.mod2type = {}
         self.mod2rev = {}
         self.mod2version = {}
-        for module in root.findall('./MODULES/MODULE'):
-            fullpath = module.get('FULLNAME').lstrip('/')
-            self.mod2type[fullpath] = module.get('MODTYPE')
-            self.mod2rev[fullpath] = int(module.get('COREREVISION'))
-            self.mod2version[fullpath] = module.get('HWVERSION')
-            for bus in module.findall('./BUSINTERFACES/BUSINTERFACE'):
-                port = fullpath + '/' + bus.get('NAME')
-                busname = bus.get('BUSNAME')
+        for module in root.findall("./MODULES/MODULE"):
+            fullpath = module.get("FULLNAME").lstrip("/")
+            self.mod2type[fullpath] = module.get("MODTYPE")
+            self.mod2rev[fullpath] = int(module.get("COREREVISION"))
+            self.mod2version[fullpath] = module.get("HWVERSION")
+            for bus in module.findall("./BUSINTERFACES/BUSINTERFACE"):
+                port = fullpath + "/" + bus.get("NAME")
+                busname = bus.get("BUSNAME")
                 self.pins[port] = busname
                 if busname in self.nets:
                     self.nets[busname] |= set([port])
                 else:
                     self.nets[busname] = set([port])
-
-

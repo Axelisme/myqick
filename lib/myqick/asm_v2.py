@@ -1,19 +1,21 @@
 from __future__ import annotations
+
+import copy
 import logging
-import numpy as np
 import textwrap
+from abc import ABC, abstractmethod
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
-from types import SimpleNamespace
-from typing import Callable, NamedTuple, Union, Dict
-from abc import ABC, abstractmethod
 from fractions import Fraction
-import copy
-from numbers import Number, Integral
+from numbers import Integral, Number
+from types import SimpleNamespace
+from typing import Callable, Dict, NamedTuple, Union
 
-from .tprocv2_assembler import Assembler
+import numpy as np
+
+from .helpers import check_bytes, check_keys, to_int
 from .qick_asm import AbsQickProgram, AcquireMixin
-from .helpers import to_int, check_bytes, check_keys
+from .tprocv2_assembler import Assembler
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +290,7 @@ class SimpleClass:
     # if you print this class, it will print the attributes listed in self._fields
     def __repr__(self):
         # based on https://docs.python.org/3/library/types.html#types.SimpleNamespace
-        items = (f"{k}={getattr(self,k)!r}" for k in self._fields)
+        items = (f"{k}={getattr(self, k)!r}" for k in self._fields)
         return "{}({})".format(type(self).__name__, ", ".join(items))
 
 

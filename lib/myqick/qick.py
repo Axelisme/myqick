@@ -1,24 +1,27 @@
 """
 The lower-level driver for the QICK library. Contains classes for interfacing with the SoC.
 """
+
 import os
-from pynq.overlay import Overlay
+import queue
+import time
+from collections import OrderedDict
+
+import numpy as np
 import xrfclk
 import xrfdc
-import numpy as np
-import time
-import queue
-from collections import OrderedDict
-from . import bitfile_path, obtain, get_version
-from .ip import SocIp, QickMetadata
-from .parser import parse_to_bin
-from .streamer import DataStreamer
-from .qick_asm import QickConfig
+from pynq.overlay import Overlay
+
+from . import bitfile_path, get_version, obtain
 from .asm_v1 import QickProgram
 from .asm_v2 import QickProgramV2
 from .drivers.generator import *
 from .drivers.readout import *
 from .drivers.tproc import *
+from .ip import QickMetadata, SocIp
+from .parser import parse_to_bin
+from .qick_asm import QickConfig
+from .streamer import DataStreamer
 
 
 class AxisSwitch(SocIp):
@@ -30,20 +33,21 @@ class AxisSwitch(SocIp):
     :param nmaster: Number of master interfaces
     :type nmaster: int
     """
-    bindto = ['xilinx.com:ip:axis_switch:1.1']
+
+    bindto = ["xilinx.com:ip:axis_switch:1.1"]
 
     def __init__(self, description):
         """
         Constructor method
         """
         # Number of slave interfaces.
-        self.NSL = int(description['parameters']['NUM_SI'])
+        self.NSL = int(description["parameters"]["NUM_SI"])
         # Number of master interfaces.
-        self.NMI = int(description['parameters']['NUM_MI'])
+        self.NMI = int(description["parameters"]["NUM_MI"])
 
         super().__init__(description)
 
-        self.REGISTERS = {'ctrl': 0x0, 'mix_mux': 0x040}
+        self.REGISTERS = {"ctrl": 0x0, "mix_mux": 0x040}
 
         # Init axis_switch.
         self.ctrl = 0
@@ -54,7 +58,7 @@ class AxisSwitch(SocIp):
         Disables ports
         """
         for ii in range(self.NMI):
-            offset = self.REGISTERS['mix_mux'] + 4*ii
+            offset = self.REGISTERS["mix_mux"] + 4 * ii
             self.write(offset, 0x80000000)
 
     def sel(self, mst=0, slv=0):
@@ -67,13 +71,11 @@ class AxisSwitch(SocIp):
         :type slv: int
         """
         # Sanity check.
-        if slv > self.NSL-1:
-            print("%s: Slave number %d does not exist in block." %
-                  __class__.__name__)
+        if slv > self.NSL - 1:
+            print("%s: Slave number %d does not exist in block." % __class__.__name__)
             return
-        if mst > self.NMI-1:
-            print("%s: Master number %d does not exist in block." %
-                  __class__.__name__)
+        if mst > self.NMI - 1:
+            print("%s: Master number %d does not exist in block." % __class__.__name__)
             return
 
         # Disable register update.
@@ -83,7 +85,7 @@ class AxisSwitch(SocIp):
         self.disable_ports()
 
         # MI[mst] -> SI[slv]
-        offset = self.REGISTERS['mix_mux'] + 4*mst
+        offset = self.REGISTERS["mix_mux"] + 4 * mst
         self.write(offset, slv)
 
         # Enable register update.
@@ -95,9 +97,12 @@ class RFDC(xrfdc.RFdc):
     Extends the xrfdc driver.
     Since operations on the RFdc tend to be slow (tens of ms), we cache the Nyquist zone and frequency.
     """
-    bindto = ["xilinx.com:ip:usp_rf_data_converter:2.3",
-              "xilinx.com:ip:usp_rf_data_converter:2.4",
-              "xilinx.com:ip:usp_rf_data_converter:2.6"]
+
+    bindto = [
+        "xilinx.com:ip:usp_rf_data_converter:2.3",
+        "xilinx.com:ip:usp_rf_data_converter:2.4",
+        "xilinx.com:ip:usp_rf_data_converter:2.6",
+    ]
 
     def __init__(self, description):
         """
@@ -105,13 +110,13 @@ class RFDC(xrfdc.RFdc):
         """
         super().__init__(description)
         # Nyquist zone for each channel
-        self.nqz_dict = {'dac': {}, 'adc': {}}
+        self.nqz_dict = {"dac": {}, "adc": {}}
         # Rounded NCO frequency for each channel
         self.mixer_dict = {}
 
     def configure(self, soc):
-        self.daccfg = soc['dacs']
-        self.adccfg = soc['adcs']
+        self.daccfg = soc["dacs"]
+        self.adccfg = soc["adcs"]
 
     def set_mixer_freq(self, dacname, f, phase_reset=True, force=False):
         """
@@ -133,35 +138,41 @@ class RFDC(xrfdc.RFdc):
         if not force and f == self.get_mixer_freq(dacname):
             return
 
-        tile, channel = self.daccfg[dacname]['index']
+        tile, channel = self.daccfg[dacname]["index"]
         # Make a copy of mixer settings.
         dac_mixer = self.dac_tiles[tile].blocks[channel].MixerSettings
         new_mixcfg = dac_mixer.copy()
 
         # Update the copy
-        new_mixcfg.update({
-            'EventSource': xrfdc.EVNT_SRC_IMMEDIATE,
-            'Freq': f,
-            'MixerType': xrfdc.MIXER_TYPE_FINE,
-            'PhaseOffset': 0})
+        new_mixcfg.update(
+            {
+                "EventSource": xrfdc.EVNT_SRC_IMMEDIATE,
+                "Freq": f,
+                "MixerType": xrfdc.MIXER_TYPE_FINE,
+                "PhaseOffset": 0,
+            }
+        )
 
         # Update settings.
         self.dac_tiles[tile].blocks[channel].MixerSettings = new_mixcfg
         self.dac_tiles[tile].blocks[channel].UpdateEvent(xrfdc.EVENT_MIXER)
         # The phase reset is mostly important when setting the frequency to 0: you want the NCO to end up at 1 instead of a complex value.
         # So we apply the reset after setting the new frequency (otherwise you accumulate some rotation before stopping the NCO).
-        if phase_reset: self.dac_tiles[tile].blocks[channel].ResetNCOPhase()
+        if phase_reset:
+            self.dac_tiles[tile].blocks[channel].ResetNCOPhase()
         self.mixer_dict[dacname] = f
 
     def get_mixer_freq(self, dacname):
         try:
             return self.mixer_dict[dacname]
         except KeyError:
-            tile, channel = self.daccfg[dacname]['index']
-            self.mixer_dict[dacname] = self.dac_tiles[tile].blocks[channel].MixerSettings['Freq']
+            tile, channel = self.daccfg[dacname]["index"]
+            self.mixer_dict[dacname] = (
+                self.dac_tiles[tile].blocks[channel].MixerSettings["Freq"]
+            )
             return self.mixer_dict[dacname]
 
-    def set_nyquist(self, blockname, nqz, blocktype='dac', force=False):
+    def set_nyquist(self, blockname, nqz, blocktype="dac", force=False):
         """
         Sets channel to operate in Nyquist zone nqz.
         This setting doesn't change the DAC output frequencies:
@@ -178,21 +189,21 @@ class RFDC(xrfdc.RFdc):
         :param force: force update, even if the setting is the same
         :type force: bool
         """
-        if nqz not in [1,2]:
+        if nqz not in [1, 2]:
             raise RuntimeError("Nyquist zone must be 1 or 2")
-        if blocktype not in ['dac','adc']:
+        if blocktype not in ["dac", "adc"]:
             raise RuntimeError("Block type must be adc or dac")
         if not force and self.get_nyquist(blockname, blocktype) == nqz:
             return
-        if blocktype=='dac':
-            tile, channel = self.daccfg[blockname]['index']
+        if blocktype == "dac":
+            tile, channel = self.daccfg[blockname]["index"]
             self.dac_tiles[tile].blocks[channel].NyquistZone = nqz
         else:
-            tile, channel = self.adccfg[blockname]['index']
+            tile, channel = self.adccfg[blockname]["index"]
             self.adc_tiles[tile].blocks[channel].NyquistZone = nqz
         self.nqz_dict[blocktype][blockname] = nqz
 
-    def get_nyquist(self, blockname, blocktype='dac'):
+    def get_nyquist(self, blockname, blocktype="dac"):
         """
         Get the current Nyquist zone setting for a channel.
 
@@ -208,17 +219,21 @@ class RFDC(xrfdc.RFdc):
         int
             NQZ setting (1 or 2)
         """
-        if blocktype not in ['dac','adc']:
+        if blocktype not in ["dac", "adc"]:
             raise RuntimeError("Block type must be adc or dac")
         try:
             return self.nqz_dict[blocktype][blockname]
         except KeyError:
-            if blocktype=='dac':
-                tile, channel = self.daccfg[blockname]['index']
-                self.nqz_dict[blocktype][blockname] = self.dac_tiles[tile].blocks[channel].NyquistZone
+            if blocktype == "dac":
+                tile, channel = self.daccfg[blockname]["index"]
+                self.nqz_dict[blocktype][blockname] = (
+                    self.dac_tiles[tile].blocks[channel].NyquistZone
+                )
             else:
-                tile, channel = self.adccfg[blockname]['index']
-                self.nqz_dict[blocktype][blockname] = self.adc_tiles[tile].blocks[channel].NyquistZone
+                tile, channel = self.adccfg[blockname]["index"]
+                self.nqz_dict[blocktype][blockname] = (
+                    self.adc_tiles[tile].blocks[channel].NyquistZone
+                )
             return self.nqz_dict[blocktype][blockname]
 
 
@@ -248,20 +263,30 @@ class QickSoc(Overlay, QickConfig):
     # pulse_mem_len_IQ = 65536 # samples for I, Q
     # ADC_decim_buf_len_IQ = 1024 # samples for I, Q
     # ADC_accum_buf_len_IQ = 16384 # samples for I, Q
-    #tProc_instruction_len_bytes = 8
-    #tProc_prog_mem_samples = 8000
-    #tProc_prog_mem_size_bytes_tot = tProc_instruction_len_bytes*tProc_prog_mem_samples
-    #tProc_data_len_bytes = 4
-    #tProc_data_mem_samples = 4096
-    #tProc_data_mem_size_bytes_tot = tProc_data_len_bytes*tProc_data_mem_samples
-    #tProc_stack_len_bytes = 4
-    #tProc_stack_samples = 256
-    #tProc_stack_size_bytes_tot = tProc_stack_len_bytes*tProc_stack_samples
-    #phase_resolution_bits = 32
-    #gain_resolution_signed_bits = 16
+    # tProc_instruction_len_bytes = 8
+    # tProc_prog_mem_samples = 8000
+    # tProc_prog_mem_size_bytes_tot = tProc_instruction_len_bytes*tProc_prog_mem_samples
+    # tProc_data_len_bytes = 4
+    # tProc_data_mem_samples = 4096
+    # tProc_data_mem_size_bytes_tot = tProc_data_len_bytes*tProc_data_mem_samples
+    # tProc_stack_len_bytes = 4
+    # tProc_stack_samples = 256
+    # tProc_stack_size_bytes_tot = tProc_stack_len_bytes*tProc_stack_samples
+    # phase_resolution_bits = 32
+    # gain_resolution_signed_bits = 16
 
     # Constructor.
-    def __init__(self, bitfile=None, force_init_clks=False, ignore_version=True, no_tproc=False, no_rf=False, clk_output=None, external_clk=None, **kwargs):
+    def __init__(
+        self,
+        bitfile=None,
+        force_init_clks=False,
+        ignore_version=True,
+        no_tproc=False,
+        no_rf=False,
+        clk_output=None,
+        external_clk=None,
+        **kwargs,
+    ):
         """
         Constructor method
         """
@@ -271,53 +296,58 @@ class QickSoc(Overlay, QickConfig):
         # Load bitstream. We read the bitstream configuration from the HWH file, but we don't program the FPGA yet.
         # We need to program the clocks first.
         if bitfile is None:
-            Overlay.__init__(self, bitfile_path(
-            ), ignore_version=ignore_version, download=False, **kwargs)
+            Overlay.__init__(
+                self,
+                bitfile_path(),
+                ignore_version=ignore_version,
+                download=False,
+                **kwargs,
+            )
         else:
             Overlay.__init__(
-                self, bitfile, ignore_version=ignore_version, download=False, **kwargs)
+                self, bitfile, ignore_version=ignore_version, download=False, **kwargs
+            )
 
         # Initialize the configuration
         self._cfg = {}
         QickConfig.__init__(self)
 
-        self['board'] = os.environ["BOARD"]
-        self['sw_version'] = get_version()
+        self["board"] = os.environ["BOARD"]
+        self["sw_version"] = get_version()
 
         # a space to dump any additional lines of config text which you want to print in the QickConfig
-        self['extra_description'] = []
+        self["extra_description"] = []
 
         if not no_rf:
             # Read the config to get a list of enabled ADCs and DACs, and the sampling frequencies.
-            self.list_rf_blocks(
-                self.ip_dict['usp_rf_data_converter_0']['parameters'])
-    
+            self.list_rf_blocks(self.ip_dict["usp_rf_data_converter_0"]["parameters"])
+
             self.config_clocks(force_init_clks)
-    
+
             # RF data converter (for configuring ADCs and DACs, and setting NCOs)
             self.rf = self.usp_rf_data_converter_0
             self.rf.configure(self)
 
         # Extract the IP connectivity information from the HWH parser and metadata.
         self.metadata = QickMetadata(self)
-        self['fw_timestamp'] = self.metadata.timestamp
+        self["fw_timestamp"] = self.metadata.timestamp
 
         if no_tproc:
             self.TPROC_VERSION = 0
         else:
             # tProcessor, 64-bit instruction, 32-bit registers, x8 channels.
-            if 'axis_tproc64x32_x8_0' in self.ip_dict:
+            if "axis_tproc64x32_x8_0" in self.ip_dict:
                 self.TPROC_VERSION = 1
                 self._tproc = self.axis_tproc64x32_x8_0
                 self._tproc.configure(self.axi_bram_ctrl_0, self.axi_dma_tproc)
-            elif 'qick_processor_0' in self.ip_dict:
+            elif "qick_processor_0" in self.ip_dict:
                 self.TPROC_VERSION = 2
                 self._tproc = self.qick_processor_0
                 self._tproc.configure(self.axi_dma_tproc)
             else:
-                raise RuntimeError('No tProcessor found')
+                raise RuntimeError("No tProcessor found")
 
-            #self.tnet = self.qick_net_0
+            # self.tnet = self.qick_net_0
 
             self.map_signal_paths()
 
@@ -335,12 +365,11 @@ class QickSoc(Overlay, QickConfig):
         return self._streamer
 
     def _get_block(self, fullpath):
-        """Return the IP block specified by its full path.
-        """
-        #return getattr(self, fullpath.replace('/','_'))
+        """Return the IP block specified by its full path."""
+        # return getattr(self, fullpath.replace('/','_'))
         block = self
         # recurse into hierarchies, if present
-        for x in fullpath.split('/'):
+        for x in fullpath.split("/"):
             block = getattr(block, x)
         return block
 
@@ -355,8 +384,8 @@ class QickSoc(Overlay, QickConfig):
         # We access these through the hierarchy (e.g. self.ddr4.axis_buffer_ddr_v1_0)
         # but list them using ip_dict, which has all blocks, even those inside hierarchies
         for key, val in self.ip_dict.items():
-            if hasattr(val['driver'], 'configure_connections'):
-                self._get_block(val['fullpath']).configure_connections(self)
+            if hasattr(val["driver"], "configure_connections"):
+                self._get_block(val["fullpath"]).configure_connections(self)
 
         # Signal generators (anything driven by the tProc)
         self.gens = []
@@ -372,13 +401,13 @@ class QickSoc(Overlay, QickConfig):
 
         # Populate the lists with the registered IP blocks.
         for key, val in self.ip_dict.items():
-            if issubclass(val['driver'], AbsPulsedSignalGen):
+            if issubclass(val["driver"], AbsPulsedSignalGen):
                 self.gens.append(getattr(self, key))
-            elif val['driver'] == AxisConstantIQ:
+            elif val["driver"] == AxisConstantIQ:
                 self.iqs.append(getattr(self, key))
-            elif issubclass(val['driver'], AbsReadout):
+            elif issubclass(val["driver"], AbsReadout):
                 self.readouts.append(getattr(self, key))
-            elif issubclass(val['driver'], AxisAvgBuffer):
+            elif issubclass(val["driver"], AxisAvgBuffer):
                 self.avg_bufs.append(getattr(self, key))
 
         # AxisReadoutV3 isn't a PYNQ-registered IP block, so we add it here
@@ -390,7 +419,7 @@ class QickSoc(Overlay, QickConfig):
         # We order gens by the tProc port number and tProc mux port number (if present).
         # We order buffers by the switch port number.
         # Those orderings are important, since those indices get used in programs.
-        self.gens.sort(key=lambda x:(x['tproc_ch'], x._cfg.get('tmux_ch')))
+        self.gens.sort(key=lambda x: (x["tproc_ch"], x._cfg.get("tmux_ch")))
         self.avg_bufs.sort(key=lambda x: x.switch_ch)
         # The IQ and readout orderings aren't critical for anything.
         self.iqs.sort(key=lambda x: x.dac)
@@ -409,43 +438,50 @@ class QickSoc(Overlay, QickConfig):
         # Find the MR buffer, if present.
         try:
             self.mr_buf = self.mr_buffer_et_0
-            self['mr_buf'] = self.mr_buf.cfg
+            self["mr_buf"] = self.mr_buf.cfg
         except:
             pass
 
         # Find the DDR4 controller and buffer, if present.
         try:
-            if hasattr(self, 'ddr4'):
+            if hasattr(self, "ddr4"):
                 self.ddr4_buf = self.ddr4.axis_buffer_ddr_v1_0
             else:
                 self.ddr4_buf = self.axis_buffer_ddr_v1_0
-            self['ddr4_buf'] = self.ddr4_buf.cfg
+            self["ddr4_buf"] = self.ddr4_buf.cfg
         except:
             pass
 
         # Fill the config dictionary with driver parameters.
-        self['gens'] = [gen.cfg for gen in self.gens]
-        self['iqs'] = [iq.cfg for iq in self.iqs]
+        self["gens"] = [gen.cfg for gen in self.gens]
+        self["iqs"] = [iq.cfg for iq in self.iqs]
 
         # In the config, we define a "readout" as the chain of ADC+readout+buffer.
         def merge_cfgs(bufcfg, rocfg):
             merged = {**bufcfg, **rocfg}
             for k in set(bufcfg.keys()) & set(rocfg.keys()):
                 del merged[k]
-                merged["avgbuf_"+k] = bufcfg[k]
-                merged["ro_"+k] = rocfg[k]
+                merged["avgbuf_" + k] = bufcfg[k]
+                merged["ro_" + k] = rocfg[k]
             return merged
-        self['readouts'] = [merge_cfgs(buf.cfg, buf.readout.cfg) for buf in self.avg_bufs]
 
-        self['tprocs'] = [self.tproc.cfg]
+        self["readouts"] = [
+            merge_cfgs(buf.cfg, buf.readout.cfg) for buf in self.avg_bufs
+        ]
+
+        self["tprocs"] = [self.tproc.cfg]
 
     def config_clocks(self, force_init_clks):
         """
         Configure PLLs if requested, or if any ADC/DAC is not locked.
         """
-              
+
         # if we're changing the clock config, we must set the clocks to apply the config
-        if force_init_clks or (self.external_clk is not None) or (self.clk_output is not None):
+        if (
+            force_init_clks
+            or (self.external_clk is not None)
+            or (self.clk_output is not None)
+        ):
             self.set_all_clks()
             self.download()
         else:
@@ -455,7 +491,8 @@ class QickSoc(Overlay, QickConfig):
                 self.download()
         if not self.clocks_locked():
             print(
-                "Not all DAC and ADC PLLs are locked. You may want to repeat the initialization of the QickSoc.")
+                "Not all DAC and ADC PLLs are locked. You may want to repeat the initialization of the QickSoc."
+            )
 
     def clocks_locked(self):
         """
@@ -466,10 +503,14 @@ class QickSoc(Overlay, QickConfig):
         :rtype: bool
         """
 
-        dac_locked = [self.usp_rf_data_converter_0.dac_tiles[iTile]
-                      .PLLLockStatus == 2 for iTile in self.dac_tiles]
-        adc_locked = [self.usp_rf_data_converter_0.adc_tiles[iTile]
-                      .PLLLockStatus == 2 for iTile in self.adc_tiles]
+        dac_locked = [
+            self.usp_rf_data_converter_0.dac_tiles[iTile].PLLLockStatus == 2
+            for iTile in self.dac_tiles
+        ]
+        adc_locked = [
+            self.usp_rf_data_converter_0.adc_tiles[iTile].PLLLockStatus == 2
+            for iTile in self.adc_tiles
+        ]
         return all(dac_locked) and all(adc_locked)
 
     def list_rf_blocks(self, rf_config):
@@ -479,78 +520,86 @@ class QickSoc(Overlay, QickConfig):
         This re-implements that functionality.
         """
 
-        self.hs_adc = rf_config['C_High_Speed_ADC'] == '1'
+        self.hs_adc = rf_config["C_High_Speed_ADC"] == "1"
 
         self.dac_tiles = []
         self.adc_tiles = []
         dac_fabric_freqs = []
         adc_fabric_freqs = []
         refclk_freqs = []
-        self['dacs'] = OrderedDict()
-        self['adcs'] = OrderedDict()
+        self["dacs"] = OrderedDict()
+        self["adcs"] = OrderedDict()
 
         for iTile in range(4):
-            if rf_config['C_DAC%d_Enable' % (iTile)] != '1':
+            if rf_config["C_DAC%d_Enable" % (iTile)] != "1":
                 continue
             self.dac_tiles.append(iTile)
-            f_fabric = float(rf_config['C_DAC%d_Fabric_Freq' % (iTile)])
-            f_refclk = float(rf_config['C_DAC%d_Refclk_Freq' % (iTile)])
+            f_fabric = float(rf_config["C_DAC%d_Fabric_Freq" % (iTile)])
+            f_refclk = float(rf_config["C_DAC%d_Refclk_Freq" % (iTile)])
             dac_fabric_freqs.append(f_fabric)
             refclk_freqs.append(f_refclk)
-            fbdiv = int(rf_config['C_DAC%d_FBDIV' % (iTile)])
-            refdiv = int(rf_config['C_DAC%d_Refclk_Div' % (iTile)])
-            outdiv = int(rf_config['C_DAC%d_OutDiv' % (iTile)])
-            fs_div = refdiv*outdiv
+            fbdiv = int(rf_config["C_DAC%d_FBDIV" % (iTile)])
+            refdiv = int(rf_config["C_DAC%d_Refclk_Div" % (iTile)])
+            outdiv = int(rf_config["C_DAC%d_OutDiv" % (iTile)])
+            fs_div = refdiv * outdiv
             fs_mult = fbdiv
-            fs = float(rf_config['C_DAC%d_Sampling_Rate' % (iTile)])*1000
+            fs = float(rf_config["C_DAC%d_Sampling_Rate" % (iTile)]) * 1000
             for iBlock in range(4):
-                if rf_config['C_DAC_Slice%d%d_Enable' % (iTile, iBlock)] != 'true':
+                if rf_config["C_DAC_Slice%d%d_Enable" % (iTile, iBlock)] != "true":
                     continue
                 # define a 2-digit "name" that we'll use to refer to this channel
                 chname = "%d%d" % (iTile, iBlock)
-                interpolation = int(rf_config['C_DAC_Interpolation_Mode%d%d' % (iTile, iBlock)])
-                self['dacs'][chname] = {'fs': fs,
-                                       'fs_div': fs_div,
-                                       'fs_mult': fs_mult,
-                                       'f_fabric': f_fabric,
-                                       'interpolation': interpolation,
-                                       'index' : [iTile, iBlock]}
+                interpolation = int(
+                    rf_config["C_DAC_Interpolation_Mode%d%d" % (iTile, iBlock)]
+                )
+                self["dacs"][chname] = {
+                    "fs": fs,
+                    "fs_div": fs_div,
+                    "fs_mult": fs_mult,
+                    "f_fabric": f_fabric,
+                    "interpolation": interpolation,
+                    "index": [iTile, iBlock],
+                }
 
         for iTile in range(4):
-            if rf_config['C_ADC%d_Enable' % (iTile)] != '1':
+            if rf_config["C_ADC%d_Enable" % (iTile)] != "1":
                 continue
             self.adc_tiles.append(iTile)
-            f_fabric = float(rf_config['C_ADC%d_Fabric_Freq' % (iTile)])
-            f_refclk = float(rf_config['C_ADC%d_Refclk_Freq' % (iTile)])
+            f_fabric = float(rf_config["C_ADC%d_Fabric_Freq" % (iTile)])
+            f_refclk = float(rf_config["C_ADC%d_Refclk_Freq" % (iTile)])
             adc_fabric_freqs.append(f_fabric)
             refclk_freqs.append(f_refclk)
-            fbdiv = int(rf_config['C_ADC%d_FBDIV' % (iTile)])
-            refdiv = int(rf_config['C_ADC%d_Refclk_Div' % (iTile)])
-            outdiv = int(rf_config['C_ADC%d_OutDiv' % (iTile)])
-            fs_div = refdiv*outdiv
+            fbdiv = int(rf_config["C_ADC%d_FBDIV" % (iTile)])
+            refdiv = int(rf_config["C_ADC%d_Refclk_Div" % (iTile)])
+            outdiv = int(rf_config["C_ADC%d_OutDiv" % (iTile)])
+            fs_div = refdiv * outdiv
             fs_mult = fbdiv
-            fs = float(rf_config['C_ADC%d_Sampling_Rate' % (iTile)])*1000
+            fs = float(rf_config["C_ADC%d_Sampling_Rate" % (iTile)]) * 1000
             for iBlock in range(4):
                 # for dual-ADC FPGAs, each channel is two blocks
                 # so just look at the even blocks
                 if self.hs_adc:
-                    if iBlock%2 != 0:
+                    if iBlock % 2 != 0:
                         continue
                     # we need to record how to index into the adc_tiles structure, which does not skip odd numbers
-                    block = iBlock//2
+                    block = iBlock // 2
                 else:
                     block = iBlock
-                if rf_config['C_ADC_Slice%d%d_Enable' % (iTile, iBlock)] != 'true':
+                if rf_config["C_ADC_Slice%d%d_Enable" % (iTile, iBlock)] != "true":
                     continue
                 # define a 2-digit "name" that we'll use to refer to this channel
                 chname = "%d%d" % (iTile, iBlock)
-                decimation = int(rf_config['C_ADC_Decimation_Mode%d%d' % (iTile, iBlock)])
-                self['adcs'][chname] = {'fs': fs,
-                                       'fs_div': fs_div,
-                                       'fs_mult': fs_mult,
-                                       'f_fabric': f_fabric,
-                                       'decimation': decimation,
-                                       'index': [iTile, block]}
+                decimation = int(
+                    rf_config["C_ADC_Decimation_Mode%d%d" % (iTile, iBlock)]
+                )
+                self["adcs"][chname] = {
+                    "fs": fs,
+                    "fs_div": fs_div,
+                    "fs_mult": fs_mult,
+                    "f_fabric": f_fabric,
+                    "decimation": decimation,
+                    "index": [iTile, block],
+                }
 
         def get_common_freq(freqs):
             """
@@ -562,75 +611,75 @@ class QickSoc(Overlay, QickConfig):
                 raise RuntimeError("Unexpected frequencies:", freqs)
             return freqs[0]
 
-        self['refclk_freq'] = get_common_freq(refclk_freqs)
+        self["refclk_freq"] = get_common_freq(refclk_freqs)
 
     def set_all_clks(self):
         """
         Resets all the board clocks
         """
-        if self['board'] == 'ZCU111':
+        if self["board"] == "ZCU111":
             # master clock generator is LMK04208, always outputs 122.88
             # DAC/ADC are clocked by LMX2594
             # available: 102.4, 204.8, 409.6, 737.0
             lmk_freq = 122.88
-            lmx_freq = self['refclk_freq']
+            lmx_freq = self["refclk_freq"]
             print("resetting clocks:", lmk_freq, lmx_freq)
 
-            if hasattr(xrfclk, "xrfclk"): # pynq 2.7
+            if hasattr(xrfclk, "xrfclk"):  # pynq 2.7
                 # load the default clock chip configurations from file, so we can then modify them
                 xrfclk.xrfclk._find_devices()
                 xrfclk.xrfclk._read_tics_output()
                 if self.clk_output:
                     # change the register for the LMK04208 chip's 5th output, which goes to J108
                     # we need this for driving the RF board
-                    xrfclk.xrfclk._Config['lmk04208'][lmk_freq][6] = 0x00140325
+                    xrfclk.xrfclk._Config["lmk04208"][lmk_freq][6] = 0x00140325
                 if self.external_clk:
                     # default value is 0x2302886D
-                    xrfclk.xrfclk._Config['lmk04208'][lmk_freq][14] = 0x2302826D
-            else: # pynq 2.6
+                    xrfclk.xrfclk._Config["lmk04208"][lmk_freq][14] = 0x2302826D
+            else:  # pynq 2.6
                 if self.clk_output:
                     # change the register for the LMK04208 chip's 5th output, which goes to J108
                     # we need this for driving the RF board
                     xrfclk._lmk04208Config[lmk_freq][6] = 0x00140325
-                else: # restore the default
+                else:  # restore the default
                     xrfclk._lmk04208Config[lmk_freq][6] = 0x80141E05
                 if self.external_clk:
                     xrfclk._lmk04208Config[lmk_freq][14] = 0x2302826D
-                else: # restore the default
+                else:  # restore the default
                     xrfclk._lmk04208Config[lmk_freq][14] = 0x2302886D
             xrfclk.set_all_ref_clks(lmx_freq)
-        elif self['board'] == 'ZCU216':
+        elif self["board"] == "ZCU216":
             # master clock generator is LMK04828, which is used for DAC/ADC clocks
             # only 245.76 available by default
             # LMX2594 is not used
             # available: 102.4, 204.8, 409.6, 491.52, 737.0
-            lmk_freq = self['refclk_freq']
-            lmx_freq = self['refclk_freq']*2
+            lmk_freq = self["refclk_freq"]
+            lmx_freq = self["refclk_freq"] * 2
             print("resetting clocks:", lmk_freq, lmx_freq)
 
-            assert hasattr(xrfclk, "xrfclk") # ZCU216 only has a pynq 2.7 image
+            assert hasattr(xrfclk, "xrfclk")  # ZCU216 only has a pynq 2.7 image
             xrfclk.xrfclk._find_devices()
             xrfclk.xrfclk._read_tics_output()
             if self.external_clk:
                 # default value is 0x01471A
-                xrfclk.xrfclk._Config['lmk04828'][lmk_freq][80] = 0x01470A
+                xrfclk.xrfclk._Config["lmk04828"][lmk_freq][80] = 0x01470A
             if self.clk_output:
                 # default value is 0x012C22
-                xrfclk.xrfclk._Config['lmk04828'][lmk_freq][55] = 0x012C02
+                xrfclk.xrfclk._Config["lmk04828"][lmk_freq][55] = 0x012C02
             xrfclk.set_ref_clks(lmk_freq=lmk_freq, lmx_freq=lmx_freq)
-        elif self['board'] == 'RFSoC4x2':
+        elif self["board"] == "RFSoC4x2":
             # master clock generator is LMK04828, always outputs 245.76
             # DAC/ADC are clocked by LMX2594
             # available: 102.4, 204.8, 409.6, 491.52, 737.0
             lmk_freq = 245.76
-            lmx_freq = self['refclk_freq']
+            lmx_freq = self["refclk_freq"]
             print("resetting clocks:", lmk_freq, lmx_freq)
 
             xrfclk.xrfclk._find_devices()
             xrfclk.xrfclk._read_tics_output()
             if self.external_clk:
                 # default value is 0x01471A
-                xrfclk.xrfclk._Config['lmk04828'][lmk_freq][80] = 0x01470A
+                xrfclk.xrfclk._Config["lmk04828"][lmk_freq][80] = 0x01470A
             xrfclk.set_ref_clks(lmk_freq=lmk_freq, lmx_freq=lmx_freq)
 
     def get_decimated(self, ch, address=0, length=None):
@@ -649,7 +698,7 @@ class QickSoc(Overlay, QickConfig):
         if length is None:
             # this default will always cause a RuntimeError
             # TODO: remove the default, or pick a better fallback value
-            length = self.avg_bufs[ch]['buf_maxlen']
+            length = self.avg_bufs[ch]["buf_maxlen"]
 
         # we must transfer an even number of samples, so we pad the transfer size
         transfer_len = length + length % 2
@@ -657,10 +706,11 @@ class QickSoc(Overlay, QickConfig):
         # there is a bug which causes the first sample of a transfer to always be the sample at address 0
         # we work around this by requesting an extra 2 samples at the beginning
         data = self.avg_bufs[ch].transfer_buf(
-            (address-2) % self.avg_bufs[ch]['buf_maxlen'], transfer_len+2)
+            (address - 2) % self.avg_bufs[ch]["buf_maxlen"], transfer_len + 2
+        )
 
         # we remove the padding here
-        return data[2:length+2]
+        return data[2 : length + 2]
 
     def get_accumulated(self, ch, address=0, length=None):
         """
@@ -679,7 +729,7 @@ class QickSoc(Overlay, QickConfig):
         if length is None:
             # this default will always cause a RuntimeError
             # TODO: remove the default, or pick a better fallback value
-            length = self.avg_bufs[ch]['avg_maxlen']
+            length = self.avg_bufs[ch]["avg_maxlen"]
 
         # we must transfer an even number of samples, so we pad the transfer size
         transfer_len = length + length % 2
@@ -687,10 +737,11 @@ class QickSoc(Overlay, QickConfig):
         # there is a bug which causes the first sample of a transfer to always be the sample at address 0
         # we work around this by requesting an extra 2 samples at the beginning
         data = self.avg_bufs[ch].transfer_avg(
-            (address-2) % self.avg_bufs[ch]['avg_maxlen'], transfer_len+2)
+            (address - 2) % self.avg_bufs[ch]["avg_maxlen"], transfer_len + 2
+        )
 
         # we remove the padding here
-        return data[2:length+2]
+        return data[2 : length + 2]
 
     def configure_readout(self, ch, ro_regs):
         """Configure readout channel output style and frequency.
@@ -707,8 +758,15 @@ class QickSoc(Overlay, QickConfig):
         buf.readout.set_all_int(ro_regs)
 
     def config_avg(
-        self, ch, address=0, length=1, enable=True,
-        edge_counting=False, high_threshold=1000, low_threshold=0):
+        self,
+        ch,
+        address=0,
+        length=1,
+        enable=True,
+        edge_counting=False,
+        high_threshold=1000,
+        low_threshold=0,
+    ):
         """Configure and optionally enable accumulation buffer
         :param ch: Channel to configure
         :type ch: int
@@ -720,10 +778,14 @@ class QickSoc(Overlay, QickConfig):
         :type enable: bool
         """
         avg_buf = self.avg_bufs[ch]
-        if avg_buf['has_edge_counter']:
+        if avg_buf["has_edge_counter"]:
             avg_buf.config_avg(
-                address, length,
-                edge_counting=edge_counting, high_threshold=high_threshold, low_threshold=low_threshold)
+                address,
+                length,
+                edge_counting=edge_counting,
+                high_threshold=high_threshold,
+                low_threshold=low_threshold,
+            )
         else:
             avg_buf.config_avg(address, length)
         if enable:
@@ -752,7 +814,7 @@ class QickSoc(Overlay, QickConfig):
         :return: Length of accumulation buffer for channel 'ch'
         :rtype: int
         """
-        return self['readouts'][ch]['avg_maxlen']
+        return self["readouts"][ch]["avg_maxlen"]
 
     def load_pulse_data(self, ch, data, addr):
         """Load pulse data into signal generators
@@ -799,7 +861,9 @@ class QickSoc(Overlay, QickConfig):
         if self.gens[ch].HAS_MIXER:
             self.gens[ch].set_mixer_freq(f, ro_ch, phase_reset=phase_reset)
         elif f != 0:
-            raise RuntimeError("tried to set a mixer frequency, but this channel doesn't have a mixer")
+            raise RuntimeError(
+                "tried to set a mixer frequency, but this channel doesn't have a mixer"
+            )
 
     def config_mux_gen(self, ch, tones):
         """Set up a list of tones all at once, using raw (integer) units.
@@ -830,11 +894,15 @@ class QickSoc(Overlay, QickConfig):
         """
         pfb = getattr(self, pfbpath)
         if pfb.HAS_OUTSEL:
-            if sel is None: sel = 'product'
+            if sel is None:
+                sel = "product"
             pfb.set_out(sel)
         else:
             if sel is not None:
-                raise RuntimeError("this readout doesn't support configuring sel, you have sel=%s" % (sel))
+                raise RuntimeError(
+                    "this readout doesn't support configuring sel, you have sel=%s"
+                    % (sel)
+                )
         for cfg in cfgs:
             pfb.set_freq_int(cfg)
 
@@ -874,12 +942,11 @@ class QickSoc(Overlay, QickConfig):
         self.tproc.load_bin_program(obtain(binprog), load_mem=load_mem)
 
     def reload_mem(self):
-        """Reload the waveform and data memory, overwriting any changes made by running the program.
-        """
+        """Reload the waveform and data memory, overwriting any changes made by running the program."""
         if self.TPROC_VERSION == 2:
             self.tproc.reload_mem()
 
-    def load_mem(self, buff, mem_sel='dmem', addr=0):
+    def load_mem(self, buff, mem_sel="dmem", addr=0):
         """
         Write a block of the selected tProc memory.
         For tProc v1 only the data memory ("dmem") is valid.
@@ -896,14 +963,14 @@ class QickSoc(Overlay, QickConfig):
             Starting write address
         """
         if self.TPROC_VERSION == 1:
-            if mem_sel=='dmem':
+            if mem_sel == "dmem":
                 self.tproc.load_dmem(buff, addr)
             else:
-                raise RuntimeError("invalid mem_sel: %s"%(mem_sel))
+                raise RuntimeError("invalid mem_sel: %s" % (mem_sel))
         elif self.TPROC_VERSION == 2:
             self.tproc.load_mem(mem_sel, buff, addr)
 
-    def read_mem(self, length, mem_sel='dmem', addr=0):
+    def read_mem(self, length, mem_sel="dmem", addr=0):
         """
         Read a block of the selected tProc memory.
         For tProc v1 only the data memory ("dmem") is valid.
@@ -924,10 +991,10 @@ class QickSoc(Overlay, QickConfig):
             32-bit array of shape (n, 8) for pmem and wmem, (n) for dmem
         """
         if self.TPROC_VERSION == 1:
-            if mem_sel=='dmem':
+            if mem_sel == "dmem":
                 return self.tproc.read_dmem(addr, length)
             else:
-                raise RuntimeError("invalid mem_sel: %s"%(mem_sel))
+                raise RuntimeError("invalid mem_sel: %s" % (mem_sel))
         elif self.TPROC_VERSION == 2:
             return self.tproc.read_mem(mem_sel, length, addr)
 
@@ -1008,8 +1075,8 @@ class QickSoc(Overlay, QickConfig):
         if self.TPROC_VERSION == 1:
             return self.tproc.single_read(addr=addr)
         elif self.TPROC_VERSION == 2:
-            self.tproc.read_sel=1
-            reg = {1:'axi_r_dt1', 2:'axi_r_dt2'}[addr]
+            self.tproc.read_sel = 1
+            reg = {1: "axi_r_dt1", 2: "axi_r_dt2"}[addr]
             return getattr(self.tproc, reg)
 
     def reset_gens(self):
@@ -1019,13 +1086,23 @@ class QickSoc(Overlay, QickConfig):
         """
         # list channel numbers for all generators capable of playing arbitrary envelopes
         # (what we actually care about is whether they can play periodic pulses, but it's the same set of gens)
-        gen_chs = [i for i, gen in enumerate(self.gens) if isinstance(gen, AbsArbSignalGen)]
+        gen_chs = [
+            i for i, gen in enumerate(self.gens) if isinstance(gen, AbsArbSignalGen)
+        ]
 
         if self.TPROC_VERSION == 1:
             prog = QickProgram(self)
             for gen in gen_chs:
-                prog.set_pulse_registers(ch=gen, style="const", mode="oneshot", freq=0, phase=0, gain=0, length=3)
-                prog.pulse(ch=gen,t=0)
+                prog.set_pulse_registers(
+                    ch=gen,
+                    style="const",
+                    mode="oneshot",
+                    freq=0,
+                    phase=0,
+                    gain=0,
+                    length=3,
+                )
+                prog.pulse(ch=gen, t=0)
             prog.end()
         elif self.TPROC_VERSION == 2:
             prog = QickProgramV2(self)
@@ -1037,7 +1114,9 @@ class QickSoc(Overlay, QickConfig):
         # this should always run with internal trigger
         prog.run(self, start_src="internal")
 
-    def start_readout(self, total_shots, counter_addr=1, ch_list=None, reads_per_shot=1, stride=None):
+    def start_readout(
+        self, total_shots, counter_addr=1, ch_list=None, reads_per_shot=1, stride=None
+    ):
         """
         Start a streaming readout of the accumulated buffers.
 
@@ -1054,9 +1133,10 @@ class QickSoc(Overlay, QickConfig):
         """
         ch_list = obtain(ch_list)
         reads_per_shot = obtain(reads_per_shot)
-        if ch_list is None: ch_list = [0, 1]
+        if ch_list is None:
+            ch_list = [0, 1]
         if isinstance(reads_per_shot, int):
-            reads_per_shot = [reads_per_shot]*len(ch_list)
+            reads_per_shot = [reads_per_shot] * len(ch_list)
         streamer = self.streamer
 
         if not streamer.readout_worker.is_alive():
@@ -1089,7 +1169,9 @@ class QickSoc(Overlay, QickConfig):
         streamer.count = 0
 
         streamer.done_flag.clear()
-        streamer.job_queue.put((total_shots, counter_addr, ch_list, reads_per_shot, stride))
+        streamer.job_queue.put(
+            (total_shots, counter_addr, ch_list, reads_per_shot, stride)
+        )
 
     def poll_data(self, totaltime=0.1, timeout=None):
         """
@@ -1111,9 +1193,13 @@ class QickSoc(Overlay, QickConfig):
 
         time_end = time.time() + totaltime
         new_data = []
-        while (totaltime < 0) or (streamer.count < streamer.total_count and time.time() < time_end):
+        while (totaltime < 0) or (
+            streamer.count < streamer.total_count and time.time() < time_end
+        ):
             try:
-                raise RuntimeError("exception in readout loop") from streamer.error_queue.get(block=False)
+                raise RuntimeError(
+                    "exception in readout loop"
+                ) from streamer.error_queue.get(block=False)
             except queue.Empty:
                 pass
             try:
@@ -1173,7 +1259,7 @@ class QickSoc(Overlay, QickConfig):
             Allow a DDR4 acqusition that exceeds the DDR4 memory capacity. The memory will be used as a circular buffer:
             later transfers will wrap around to the beginning of the memory and overwrite older data.
         """
-        self.ddr4_buf.set_switch(self['readouts'][ch]['avgbuf_fullpath'])
+        self.ddr4_buf.set_switch(self["readouts"][ch]["avgbuf_fullpath"])
         self.ddr4_buf.arm(nt, force_overwrite)
 
     def arm_mr(self, ch):
@@ -1187,7 +1273,7 @@ class QickSoc(Overlay, QickConfig):
         ch : int
             The readout channel to record (index in 'readouts' list).
         """
-        self.mr_buf.set_switch(self['readouts'][ch]['avgbuf_fullpath'])
+        self.mr_buf.set_switch(self["readouts"][ch]["avgbuf_fullpath"])
         self.mr_buf.disable()
         self.mr_buf.enable()
 
@@ -1203,4 +1289,3 @@ class QickSoc(Overlay, QickConfig):
             If None, the junk at the start of the buffer is skipped.
         """
         return self.mr_buf.transfer(start)
-

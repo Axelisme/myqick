@@ -1,5 +1,5 @@
 [project]
-name = "qick"
+name = "myqick"
 version = "0.1.0"
 description = "A modified version of the qick library"
 readme = "README.md"
@@ -12,4 +12,4 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "lib" }
-packages = ["qick"]
+packages = ["myqick"]

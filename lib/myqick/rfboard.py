@@ -1,12 +1,15 @@
 import os
-from .qick import SocIp, QickSoc
-from .qick_asm import QickConfig
-from pynq.overlay import Overlay, DefaultIP
-from pynq.buffer import allocate
-import xrfclk
-import numpy as np
 import time
-from qick.ipq_pynq_utils import clock_models
+
+import numpy as np
+import xrfclk
+from pynq.buffer import allocate
+from pynq.overlay import DefaultIP, Overlay
+
+from myqick.ipq_pynq_utils import clock_models
+
+from .qick import QickSoc, SocIp
+from .qick_asm import QickConfig
 
 
 class AxisSignalGenV3(SocIp):
@@ -17,18 +20,18 @@ class AxisSignalGenV3(SocIp):
     # * 0 : disable writes.
     # * 1 : enable writes.
     #
-    bindto = ['user.org:user:axis_signal_gen_v3:1.0']
+    bindto = ["user.org:user:axis_signal_gen_v3:1.0"]
 
     # Generics
     N = 12
     NDDS = 16
 
     # Maximum number of samples
-    MAX_LENGTH = 2**N*NDDS
+    MAX_LENGTH = 2**N * NDDS
 
     def __init__(self, description, **kwargs):
         super().__init__(description)
-        self.REGISTERS = {'start_addr_reg': 0, 'we_reg': 1}
+        self.REGISTERS = {"start_addr_reg": 0, "we_reg": 1}
 
     def config(self, axi_dma, dds_mr_switch, axis_switch, channel, name, **kwargs):
         # Default registers.
@@ -39,7 +42,7 @@ class AxisSignalGenV3(SocIp):
         self.dma = axi_dma
 
         # Real/imaginary selection switch.
-        #self.iq_switch = AxisDdsMrSwitch(dds_mr_switch)
+        # self.iq_switch = AxisDdsMrSwitch(dds_mr_switch)
         self.iq_switch = dds_mr_switch
 
         # switch
@@ -87,7 +90,7 @@ class AxisSignalGenV3(SocIp):
 class AxisSignalGenV3Ctrl(SocIp):
     # Signal Generator V3 Control registers.
     # ADDR_REG
-    bindto = ['user.org:user:axis_signal_gen_v3_ctrl:1.0']
+    bindto = ["user.org:user:axis_signal_gen_v3_ctrl:1.0"]
 
     # Generics of Signal Generator.
     N = 10
@@ -101,50 +104,52 @@ class AxisSignalGenV3Ctrl(SocIp):
     def __init__(self, description, **kwargs):
         super().__init__(description)
         self.REGISTERS = {
-            'freq': 0,
-            'phase': 1,
-            'addr': 2,
-            'gain': 3,
-            'nsamp': 4,
-            'outsel': 5,
-            'mode': 6,
-            'stdysel': 7,
-            'we': 8}
+            "freq": 0,
+            "phase": 1,
+            "addr": 2,
+            "gain": 3,
+            "nsamp": 4,
+            "outsel": 5,
+            "mode": 6,
+            "stdysel": 7,
+            "we": 8,
+        }
 
         # Default registers.
         self.freq = 0
         self.phase = 0
         self.addr = 0
         self.gain = 30000
-        self.nsamp = 16*100
+        self.nsamp = 16 * 100
         self.outsel = 1  # dds
         self.mode = 1  # periodic
         self.stdysel = 1  # zero
         self.we = 0
 
-    def add(self,
-            freq=0,
-            phase=0,
-            addr=0,
-            gain=30000,
-            nsamp=16*100,
-            outsel="dds",
-            mode="periodic",
-            stdysel="zero"):
-
+    def add(
+        self,
+        freq=0,
+        phase=0,
+        addr=0,
+        gain=30000,
+        nsamp=16 * 100,
+        outsel="dds",
+        mode="periodic",
+        stdysel="zero",
+    ):
         # Input frequency is in MHz.
-        w0 = 2*np.pi*freq/self.fs
-        freq_tmp = w0/(2*np.pi)*self.MAX_v
+        w0 = 2 * np.pi * freq / self.fs
+        freq_tmp = w0 / (2 * np.pi) * self.MAX_v
 
         self.freq = int(np.round(freq_tmp))
         self.phase = phase
         self.addr = addr
         self.gain = gain
-        self.nsamp = int(np.round(nsamp/self.NDDS))
+        self.nsamp = int(np.round(nsamp / self.NDDS))
 
-        self.outsel = {"product": 0, "dds":1, "envelope":2}[outsel]
-        self.mode = {"nsamp": 0, "periodic":1}[mode]
-        self.stdysel = {"last": 0, "zero":1}[stdysel]
+        self.outsel = {"product": 0, "dds": 1, "envelope": 2}[outsel]
+        self.mode = {"nsamp": 0, "periodic": 1}[mode]
+        self.stdysel = {"last": 0, "zero": 1}[stdysel]
 
         # Write fifo..
         self.we = 1
@@ -152,6 +157,7 @@ class AxisSignalGenV3Ctrl(SocIp):
 
     def set_fs(self, fs):
         self.fs = fs
+
 
 class AxisSignalGenV6Ctrl(SocIp):
     # Signal Generator V6 Control registers.
@@ -185,21 +191,22 @@ class AxisSignalGenV6Ctrl(SocIp):
     # WE_REG        : 1-bit.
     # * 0 : disable.
     # * 1 : enable.
-    bindto = ['user.org:user:axis_signal_gen_v6_ctrl:1.0']
+    bindto = ["user.org:user:axis_signal_gen_v6_ctrl:1.0"]
 
     def __init__(self, description, **kwargs):
         super().__init__(description)
         self.REGISTERS = {
-            'freq_reg'      : 0,
-            'phase_reg'     : 1,
-            'addr_reg'      : 2,
-            'gain_reg'      : 3,
-            'nsamp_reg'     : 4,
-            'outsel_reg'    : 5,
-            'mode_reg'      : 6,
-            'stdysel_reg'   : 7,
-            'phrst_reg'     : 8,
-            'we_reg'        : 9}
+            "freq_reg": 0,
+            "phase_reg": 1,
+            "addr_reg": 2,
+            "gain_reg": 3,
+            "nsamp_reg": 4,
+            "outsel_reg": 5,
+            "mode_reg": 6,
+            "stdysel_reg": 7,
+            "phrst_reg": 8,
+            "we_reg": 9,
+        }
 
         # Default registers.
         self.we_reg = 0
@@ -209,33 +216,34 @@ class AxisSignalGenV6Ctrl(SocIp):
         self.fs = fs
 
         # Frequency resolution.
-        self.df = fs/2**gen.B_DDS
+        self.df = fs / 2**gen.B_DDS
 
         # Generator controlled by this block.
         self.gen = gen
 
-    def add(self,
-            freq    = 0         ,
-            phase   = 0         ,
-            addr    = 0         ,
-            gain    = 0.99      ,
-            nsamp   = 16*100    ,
-            outsel  = "dds"     ,
-            mode    = "periodic",
-            stdysel = "zero"    ,
-            phrst   = "no"      ,
-            debug   = False     ):
-
+    def add(
+        self,
+        freq=0,
+        phase=0,
+        addr=0,
+        gain=0.99,
+        nsamp=16 * 100,
+        outsel="dds",
+        mode="periodic",
+        stdysel="zero",
+        phrst="no",
+        debug=False,
+    ):
         # Set registers.
-        self.freq_reg       = int(np.round(freq/self.df))
-        self.phase_reg      = phase
-        self.addr_reg       = addr
-        self.gain_reg       = int(gain*self.gen.MAXV)
-        self.nsamp_reg      = int(np.round(nsamp/self.gen.NDDS))
-        self.outsel_reg     = {"product": 0, "dds":1, "envelope":2}[outsel]
-        self.mode_reg       = {"nsamp": 0, "periodic":1}[mode]
-        self.stdysel_reg    = {"last": 0, "zero":1}[stdysel]
-        self.phase_reg      = {"no": 0, "yes":1}[phrst]
+        self.freq_reg = int(np.round(freq / self.df))
+        self.phase_reg = phase
+        self.addr_reg = addr
+        self.gain_reg = int(gain * self.gen.MAXV)
+        self.nsamp_reg = int(np.round(nsamp / self.gen.NDDS))
+        self.outsel_reg = {"product": 0, "dds": 1, "envelope": 2}[outsel]
+        self.mode_reg = {"nsamp": 0, "periodic": 1}[mode]
+        self.stdysel_reg = {"last": 0, "zero": 1}[stdysel]
+        self.phase_reg = {"no": 0, "yes": 1}[phrst]
 
         if debug:
             print("{}".format(self.__class__.__name__))
@@ -253,20 +261,21 @@ class AxisSignalGenV6Ctrl(SocIp):
         self.we_reg = 1
         self.we_reg = 0
 
+
 class AxisDdsMrSwitch(SocIp):
     # AXIS DDS MR SWITCH registers.
     # DDS_REAL_IMAG_REG
     # * 0 : real part.
     # * 1 : imaginary part.
     #
-    bindto = ['user.org:user:axis_dds_mr_switch:1.0']
+    bindto = ["user.org:user:axis_dds_mr_switch:1.0"]
 
     def __init__(self, description, **kwargs):
         """
         Constructor method
         """
         super().__init__(description)
-        self.REGISTERS = {'dds_real_imag': 0}
+        self.REGISTERS = {"dds_real_imag": 0}
 
         # Default registers.
         # dds_real_imag = 0  : take real part.
@@ -283,29 +292,40 @@ class AxisDdsMrSwitch(SocIp):
 
 
 class spi(DefaultIP):
-
-    bindto = ['xilinx.com:ip:axi_quad_spi:3.2']
-    SPI_REGLIST = ['DGIER', 'IPISR', 'IPIER', 'SRR', 'SPICR', 'SPISR', 'SPI_DTR', 'SPI_DRR', 'SPI_SSR', 'SPI_TXFIFO_OR', 'SPI_RXFIFO_OR']
+    bindto = ["xilinx.com:ip:axi_quad_spi:3.2"]
+    SPI_REGLIST = [
+        "DGIER",
+        "IPISR",
+        "IPIER",
+        "SRR",
+        "SPICR",
+        "SPISR",
+        "SPI_DTR",
+        "SPI_DRR",
+        "SPI_SSR",
+        "SPI_TXFIFO_OR",
+        "SPI_RXFIFO_OR",
+    ]
 
     #
     # SPI registers - See Xilinx PG153 AXI Quad SPI for discriptions
     #
-    #DGIER = 0x1C          # 0x1C - RW - SPI Device Global Interrupt Enable Register
-    #IPISR = 0x20          # 0x20 - RW - SPI IP Interrupt Status Register
-    #IPIER = 0x28          # 0x28 - RW - SPI IP Interrupt Enable Register
-    #SRR = 0x40            # 0x40 - WO - SPI Software Reset Reg
-    #SPICR = 0x60          # 0x60 - RW - SPI Control Register
-    #SPISR = 0x64          # 0x64 - RO - SPI Status Register
-    #SPI_DTR = 0x68        # 0x68 - WO - SPI Data Transmit Register
-    #SPI_DRR = 0x6C        # 0x6C - RO - SPI Data Receive Register
-    #SPI_SSR = 0x70        # 0x70 - RW - SPI Slave Select Register
-    #SPI_TXFIFO_OR = 0x74  # 0x74 - RW - SPI Transmit FIFO Occupancy Register
-    #SPI_RXFIFO_OR = 0x78  # 0x78 - RO - SPI Receive FIFO Occupancy Register
+    # DGIER = 0x1C          # 0x1C - RW - SPI Device Global Interrupt Enable Register
+    # IPISR = 0x20          # 0x20 - RW - SPI IP Interrupt Status Register
+    # IPIER = 0x28          # 0x28 - RW - SPI IP Interrupt Enable Register
+    # SRR = 0x40            # 0x40 - WO - SPI Software Reset Reg
+    # SPICR = 0x60          # 0x60 - RW - SPI Control Register
+    # SPISR = 0x64          # 0x64 - RO - SPI Status Register
+    # SPI_DTR = 0x68        # 0x68 - WO - SPI Data Transmit Register
+    # SPI_DRR = 0x6C        # 0x6C - RO - SPI Data Receive Register
+    # SPI_SSR = 0x70        # 0x70 - RW - SPI Slave Select Register
+    # SPI_TXFIFO_OR = 0x74  # 0x74 - RW - SPI Transmit FIFO Occupancy Register
+    # SPI_RXFIFO_OR = 0x78  # 0x78 - RO - SPI Receive FIFO Occupancy Register
 
     def __init__(self, description, **kwargs):
         super().__init__(description)
         # Data width.
-        self.data_width = int(description['parameters']['C_NUM_TRANSFER_BITS'])
+        self.data_width = int(description["parameters"]["C_NUM_TRANSFER_BITS"])
 
         # Soft reset SPI.
         self.rst()
@@ -320,7 +340,7 @@ class spi(DefaultIP):
             super().__setattr__(a, v)
 
     def __getattr__(self, a):
-        #print(self.SPI_REGLIST)
+        # print(self.SPI_REGLIST)
         if a in self.SPI_REGLIST:
             return getattr(self.register_map, a)
         else:
@@ -369,47 +389,54 @@ class spi(DefaultIP):
     # Bit 0 : Local loopback mode.
     # -> 0 : Normal operation.
     # -> 1 : Loopback mode.
-    def config(self,
-               lsb="lsb",
-               msttran="enable",
-               ssmode="ssr",
-               rxfifo="rst",
-               txfifo="rst",
-               cpha="",
-               cpol="high",
-               mst="master",
-               en="enable",
-               loopback="no"):
-
+    def config(
+        self,
+        lsb="lsb",
+        msttran="enable",
+        ssmode="ssr",
+        rxfifo="rst",
+        txfifo="rst",
+        cpha="",
+        cpol="high",
+        mst="master",
+        en="enable",
+        loopback="no",
+    ):
         # LSB/MSB.
-        self.register_map.SPICR.LSB_First = {"lsb":1, "msb":0}[lsb]
+        self.register_map.SPICR.LSB_First = {"lsb": 1, "msb": 0}[lsb]
 
         # Master transaction inhibit.
-        self.register_map.SPICR.Master_Transaction_Inhibit = {"disable":1, "enable":0}[msttran]
+        self.register_map.SPICR.Master_Transaction_Inhibit = {
+            "disable": 1,
+            "enable": 0,
+        }[msttran]
 
         # Manual slave select.
-        self.register_map.SPICR.Manual_Slave_Select_Assertion_Enable = {"ssr":1, "auto":0}[ssmode]
+        self.register_map.SPICR.Manual_Slave_Select_Assertion_Enable = {
+            "ssr": 1,
+            "auto": 0,
+        }[ssmode]
 
         # RX FIFO.
-        self.register_map.SPICR.RX_FIFO_Reset = {"rst":1, "":0}[rxfifo]
+        self.register_map.SPICR.RX_FIFO_Reset = {"rst": 1, "": 0}[rxfifo]
 
         # TX FIFO.
-        self.register_map.SPICR.TX_FIFO_Reset = {"rst":1, "":0}[txfifo]
+        self.register_map.SPICR.TX_FIFO_Reset = {"rst": 1, "": 0}[txfifo]
 
         # CPHA.
-        self.register_map.SPICR.CPHA = {"invert":1, "":0}[cpha]
+        self.register_map.SPICR.CPHA = {"invert": 1, "": 0}[cpha]
 
         # CPOL
-        self.register_map.SPICR.CPOL = {"low":1, "high":0}[cpol]
+        self.register_map.SPICR.CPOL = {"low": 1, "high": 0}[cpol]
 
         # Master mode.
-        self.register_map.SPICR.Master = {"master":1, "slave":0}[mst]
+        self.register_map.SPICR.Master = {"master": 1, "slave": 0}[mst]
 
         # SPI enable.
-        self.register_map.SPICR.SPE = {"enable":1, "disable":0}[en]
+        self.register_map.SPICR.SPE = {"enable": 1, "disable": 0}[en]
 
         # Loopback
-        self.register_map.SPICR.LOOP = {"yes":1, "no":0}[loopback]
+        self.register_map.SPICR.LOOP = {"yes": 1, "no": 0}[loopback]
 
     # Enable function.
     def en_level(self, nch=4, chlist=[0], en_l="high"):
@@ -422,7 +449,7 @@ class spi(DefaultIP):
         ch_en = 0
         if en_l == "high":
             for i in range(len(chlist)):
-                ch_en |= (1 << chlist[i])
+                ch_en |= 1 << chlist[i]
         elif en_l == "low":
             ch_en = 2**nch - 1
             for i in range(len(chlist)):
@@ -439,9 +466,9 @@ class spi(DefaultIP):
         if not isinstance(data, bytes):
             raise RuntimeError("data is not a bytes object: ", data)
         if self.data_width == 16:
-            data = np.frombuffer(data, dtype=np.dtype('H')) # uint16
+            data = np.frombuffer(data, dtype=np.dtype("H"))  # uint16
         elif self.data_width == 32:
-            data = np.frombuffer(data, dtype=np.dtype('I')) # uint32
+            data = np.frombuffer(data, dtype=np.dtype("I"))  # uint32
 
         # Manually assert channels.
         ch_en_temp = self.SPI_SSR.Selected_Slave
@@ -474,7 +501,7 @@ class spi(DefaultIP):
         For data width 16 or 32, the bytes will be unpacked in little-endian order.
         """
         # Fifo is empty
-        if self.SPISR.RX_Empty==1:
+        if self.SPISR.RX_Empty == 1:
             return bytes()
         else:
             # Get number of samples on fifo.
@@ -483,9 +510,9 @@ class spi(DefaultIP):
             if self.data_width == 8:
                 return bytes(data_r)
             elif self.data_width == 16:
-                return np.array(data_r).astype(np.dtype('H')).tobytes() # uint16
+                return np.array(data_r).astype(np.dtype("H")).tobytes()  # uint16
             elif self.data_width == 32:
-                return np.array(data_r).astype(np.dtype('I')).tobytes() # uint32
+                return np.array(data_r).astype(np.dtype("I")).tobytes()  # uint32
 
     # Send/Receive.
     def send_receive_m(self, data, ch_en, cs_t="pulse"):
@@ -498,19 +525,19 @@ class spi(DefaultIP):
 
         return data_r
 
+
 # Step Attenuator PE43705.
 # Range 0-31.75 dB.
 # Parts are used in serial mode.
 # See schematics for Address/LE correspondance.
 class PE43705:
-    """
-    """
+    """ """
 
     address = 0
     nSteps = 2**7
     dbStep = 0.25
     dbMinAtt = 0
-    dbMaxAtt = (nSteps-1)*dbStep
+    dbMaxAtt = (nSteps - 1) * dbStep
 
     def __init__(self, address=0):
         self.address = address
@@ -524,7 +551,7 @@ class PE43705:
         elif db > self.dbMaxAtt:
             raise RuntimeError("attenuation value %f out of range" % (db))
         else:
-            ret = int(np.round(db/self.dbStep))
+            ret = int(np.round(db / self.dbStep))
 
         return ret
 
@@ -532,26 +559,29 @@ class PE43705:
         # will get packed as (address << 8) | step
         return bytes([self.db2step(db), self.address])
 
+
 # GPIO chip MCP23S08.
 class MCP23S08:
-    """
-    """
+    """ """
+
     # Commands.
     cmd_wr = 0x40
     cmd_rd = 0x41
 
     # Registers.
-    REGS = {'IODIR_REG': 0x00,
-            'IPOL_REG': 0x01,
-            'GPINTEN_REG': 0x02,
-            'DEFVAL_REG': 0x03,
-            'INTCON_REG': 0x04,
-            'IOCON_REG': 0x05,
-            'GPPU_REG': 0x06,
-            'INTF_REG': 0x07,
-            'INTCAP_REG': 0x08,
-            'GPIO_REG': 0x09,
-            'OLAT_REG': 0x0A}
+    REGS = {
+        "IODIR_REG": 0x00,
+        "IPOL_REG": 0x01,
+        "GPINTEN_REG": 0x02,
+        "DEFVAL_REG": 0x03,
+        "INTCON_REG": 0x04,
+        "IOCON_REG": 0x05,
+        "GPPU_REG": 0x06,
+        "INTF_REG": 0x07,
+        "INTCAP_REG": 0x08,
+        "GPIO_REG": 0x09,
+        "OLAT_REG": 0x0A,
+    }
 
     def __init__(self, dev_addr):
         self.dev_addr = dev_addr
@@ -561,8 +591,7 @@ class MCP23S08:
         if reg in self.REGS:
             return self.REGS[reg]
         else:
-            print("%s: register %s not recognized." %
-                  (self.__class__.__name__, reg))
+            print("%s: register %s not recognized." % (self.__class__.__name__, reg))
             return -1
 
     # Data array: 3 bytes.
@@ -571,7 +600,7 @@ class MCP23S08:
     # byte[2] = register value (dummy for read).
     def reg_rd(self, reg="GPIO_REG"):
         # Read command.
-        cmd = self.cmd_rd + 2*self.dev_addr
+        cmd = self.cmd_rd + 2 * self.dev_addr
 
         # Address.
         addr = self.reg2addr(reg)
@@ -581,17 +610,18 @@ class MCP23S08:
 
     def reg_wr(self, reg="GPIO_REG", val=0):
         # Write command.
-        cmd = self.cmd_wr + 2*self.dev_addr
+        cmd = self.cmd_wr + 2 * self.dev_addr
 
         # Address.
         addr = self.reg2addr(reg)
 
         return bytes([cmd, addr, val])
 
+
 # LO Chip ADF4372.
 class ADF4372:
-    """
-    """
+    """ """
+
     # Reference input.
     f_REF_in = 122.88
 
@@ -603,73 +633,74 @@ class ADF4372:
     cmd_rd = 0x80
 
     # Registers.
-    REGS = {'CONFIG0_REG': 0x00,
-            'CONFIG1_REG': 0x01,
-            'CHIP_REG': 0x03,
-            'PROD_ID0_REG': 0x04,
-            'PROD_ID1_REG': 0x05,
-            'PROD_REV_REG': 0x06,
-            'INT_LOW_REG': 0x10,
-            'INT_HIGH_REG': 0x11,
-            'CAL_PRE_REG': 0x12,
-            'FRAC1_LOW_REG': 0x14,
-            'FRAC1_MID_REG': 0x15,
-            'FRAC1_HIGH_REG': 0x16,
-            'FRAC2_LOW_REG': 0x17,  # NOTE: bit zero is the MSB of FRAC1.
-            'FRAC2_HIGH_REG': 0x18,
-            'MOD2_LOW_REG': 0x19,
-            'MOD2_HIGH_REG': 0x1A,  # NOTE: bi 6 is PHASE_ADJ.
-            'PHASE_LOW_REG': 0x1B,
-            'PHASE_MID_REG': 0x1C,
-            'PHASE_HIGH_REG': 0x1D,
-            'CONFIG2_REG': 0x1E,
-            'RCNT_REG': 0x1F,
-            'MUXOUT_REG': 0x20,
-            'REF_REG': 0x22,
-            'CONFIG3_REG': 0x23,
-            'RFDIV_REG': 0x24,
-            'RFOUT_REG': 0x25,
-            'BLEED0_REG': 0x26,
-            'BLEED1_REG': 0x27,
-            'LOCK_REG': 0x28,
-            'CONFIG4_REG': 0x2A,
-            'SD_REG': 0x2B,
-            'VCO_BIAS0_REG': 0x2C,
-            'VCO_BIAS1_REG': 0x2D,
-            'VCO_BIAS2_REG': 0x2E,
-            'VCO_BIAS3_REG': 0x2F,
-            'VCO_BAND_REG': 0x30,
-            'TIMEOUT_REG': 0x31,
-            'ADC_REG': 0x32,
-            'SYNTH_TIMEOUT_REG': 0x33,
-            'VCO_TIMEOUT_REG': 0x34,
-            'ADC_CLK_REG': 0x35,
-            'ICP_OFFSET_REG': 0x36,
-            'SI_BAND_REG': 0x37,
-            'SI_VCO_REG': 0x38,
-            'SI_VTUNE_REG': 0x39,
-            'ADC_OFFSET_REG': 0x3A,
-            'SD_RESET_REG': 0x3D,
-            'CP_TMODE_REG': 0x3E,
-            'CLK1_DIV_LOW_REG': 0x3F,
-            'CLK1_DIV_HIGH_REG': 0x40,
-            'CLK2_DIV_REG': 0x41,
-            'TRM_RESD0_REG': 0x47,
-            'TRM_RESD1_REG': 0x52,
-            'VCO_DATA_LOW_REG': 0x6E,
-            'VCO_DATA_HIGH_REG': 0x6F,
-            'BIAS_SEL_X2_REG': 0x70,
-            'BIAS_SEL_X4_REG': 0x71,
-            'AUXOUT_REG': 0x72,
-            'LD_PD_ADC_REG': 0x73,
-            'LOCK_DETECT_REG': 0x7C}
+    REGS = {
+        "CONFIG0_REG": 0x00,
+        "CONFIG1_REG": 0x01,
+        "CHIP_REG": 0x03,
+        "PROD_ID0_REG": 0x04,
+        "PROD_ID1_REG": 0x05,
+        "PROD_REV_REG": 0x06,
+        "INT_LOW_REG": 0x10,
+        "INT_HIGH_REG": 0x11,
+        "CAL_PRE_REG": 0x12,
+        "FRAC1_LOW_REG": 0x14,
+        "FRAC1_MID_REG": 0x15,
+        "FRAC1_HIGH_REG": 0x16,
+        "FRAC2_LOW_REG": 0x17,  # NOTE: bit zero is the MSB of FRAC1.
+        "FRAC2_HIGH_REG": 0x18,
+        "MOD2_LOW_REG": 0x19,
+        "MOD2_HIGH_REG": 0x1A,  # NOTE: bi 6 is PHASE_ADJ.
+        "PHASE_LOW_REG": 0x1B,
+        "PHASE_MID_REG": 0x1C,
+        "PHASE_HIGH_REG": 0x1D,
+        "CONFIG2_REG": 0x1E,
+        "RCNT_REG": 0x1F,
+        "MUXOUT_REG": 0x20,
+        "REF_REG": 0x22,
+        "CONFIG3_REG": 0x23,
+        "RFDIV_REG": 0x24,
+        "RFOUT_REG": 0x25,
+        "BLEED0_REG": 0x26,
+        "BLEED1_REG": 0x27,
+        "LOCK_REG": 0x28,
+        "CONFIG4_REG": 0x2A,
+        "SD_REG": 0x2B,
+        "VCO_BIAS0_REG": 0x2C,
+        "VCO_BIAS1_REG": 0x2D,
+        "VCO_BIAS2_REG": 0x2E,
+        "VCO_BIAS3_REG": 0x2F,
+        "VCO_BAND_REG": 0x30,
+        "TIMEOUT_REG": 0x31,
+        "ADC_REG": 0x32,
+        "SYNTH_TIMEOUT_REG": 0x33,
+        "VCO_TIMEOUT_REG": 0x34,
+        "ADC_CLK_REG": 0x35,
+        "ICP_OFFSET_REG": 0x36,
+        "SI_BAND_REG": 0x37,
+        "SI_VCO_REG": 0x38,
+        "SI_VTUNE_REG": 0x39,
+        "ADC_OFFSET_REG": 0x3A,
+        "SD_RESET_REG": 0x3D,
+        "CP_TMODE_REG": 0x3E,
+        "CLK1_DIV_LOW_REG": 0x3F,
+        "CLK1_DIV_HIGH_REG": 0x40,
+        "CLK2_DIV_REG": 0x41,
+        "TRM_RESD0_REG": 0x47,
+        "TRM_RESD1_REG": 0x52,
+        "VCO_DATA_LOW_REG": 0x6E,
+        "VCO_DATA_HIGH_REG": 0x6F,
+        "BIAS_SEL_X2_REG": 0x70,
+        "BIAS_SEL_X4_REG": 0x71,
+        "AUXOUT_REG": 0x72,
+        "LD_PD_ADC_REG": 0x73,
+        "LOCK_DETECT_REG": 0x7C,
+    }
 
     def reg2addr(self, reg="CONFIG0_REG"):
         if reg in self.REGS:
             return self.REGS[reg]
         else:
-            print("%s: register %s not recognized." %
-                  (self.__class__.__name__, reg))
+            print("%s: register %s not recognized." % (self.__class__.__name__, reg))
             return -1
 
     # Data array: 3 bytes.
@@ -697,50 +728,55 @@ class ADF4372:
     def set_freq(self, fin=6000):
         # Structures for output.
         regs = {}
-        regs['INT'] = {'FULL': 0, 'LOW': 0, 'HIGH': 0}
-        regs['FRAC1'] = {'FULL': 0, 'LOW': 0, 'MID': 0, 'HIGH': 0, 'MSB': 0}
+        regs["INT"] = {"FULL": 0, "LOW": 0, "HIGH": 0}
+        regs["FRAC1"] = {"FULL": 0, "LOW": 0, "MID": 0, "HIGH": 0, "MSB": 0}
 
         # Sanity check.
         if fin < 4000:
-            print("%s: input frequency %d below the limit" %
-                  (self.__class__.__name__, fin))
+            print(
+                "%s: input frequency %d below the limit"
+                % (self.__class__.__name__, fin)
+            )
             return -1
         elif fin > 8000:
-            print("%s: input frequency %d above the limit" %
-                  (self.__class__.__name__, fin))
+            print(
+                "%s: input frequency %d above the limit"
+                % (self.__class__.__name__, fin)
+            )
             return -1
 
-        Ndiv = fin/self.f_REF_in
+        Ndiv = fin / self.f_REF_in
 
         # Integer part.
         int_ = int(np.floor(Ndiv))
-        int_low = int_ & 0xff
+        int_low = int_ & 0xFF
         int_high = int_ >> 8
 
         # Fractional part.
         frac_ = Ndiv - int_
-        frac_ = int(np.floor(frac_*self.MOD1))
-        frac_low = frac_ & 0xff
-        frac_mid = (frac_ >> 8) & 0xff
-        frac_high = (frac_ >> 16) & 0xff
+        frac_ = int(np.floor(frac_ * self.MOD1))
+        frac_low = frac_ & 0xFF
+        frac_mid = (frac_ >> 8) & 0xFF
+        frac_high = (frac_ >> 16) & 0xFF
         frac_msb = frac_ >> 24
 
         # Write values into structure.
-        regs['INT']['FULL'] = int_
-        regs['INT']['LOW'] = int_low
-        regs['INT']['HIGH'] = int_high
-        regs['FRAC1']['FULL'] = frac_
-        regs['FRAC1']['LOW'] = frac_low
-        regs['FRAC1']['MID'] = frac_mid
-        regs['FRAC1']['HIGH'] = frac_high
-        regs['FRAC1']['MSB'] = frac_msb
+        regs["INT"]["FULL"] = int_
+        regs["INT"]["LOW"] = int_low
+        regs["INT"]["HIGH"] = int_high
+        regs["FRAC1"]["FULL"] = frac_
+        regs["FRAC1"]["LOW"] = frac_low
+        regs["FRAC1"]["MID"] = frac_mid
+        regs["FRAC1"]["HIGH"] = frac_high
+        regs["FRAC1"]["MSB"] = frac_msb
 
         return regs
 
+
 # BIAS DAC chip AD5781.
 class AD5781:
-    """
-    """
+    """ """
+
     # Commands.
     cmd_wr = 0x0
     cmd_rd = 0x1
@@ -753,18 +789,14 @@ class AD5781:
     B = 18
 
     # Registers.
-    REGS = {'DAC_REG': 0x01,
-            'CTRL_REG': 0x02,
-            'CLEAR_REG': 0x03,
-            'SOFT_REG': 0x04}
+    REGS = {"DAC_REG": 0x01, "CTRL_REG": 0x02, "CLEAR_REG": 0x03, "SOFT_REG": 0x04}
 
     # Register/address mapping.
     def reg2addr(self, reg="DAC_REG"):
         if reg in self.REGS:
             return self.REGS[reg]
         else:
-            print("%s: register %s not recognized." %
-                  (self.__class__.__name__, reg))
+            print("%s: register %s not recognized." % (self.__class__.__name__, reg))
             return -1
 
     def reg_rd(self, reg="DAC_REG"):
@@ -773,7 +805,7 @@ class AD5781:
 
         # R/W bit +  address (upper 4 bits).
         cmd = (self.cmd_rd << 3) | addr
-        cmd = (cmd << 4)
+        cmd = cmd << 4
 
         # Dummy bytes for completing the command.
         # NOTE: another full, 24-bit transaction is needed to clock the register out (may be all 0s).
@@ -788,7 +820,7 @@ class AD5781:
         # R/W bit +  address (upper 4 bits).
         cmd = (self.cmd_wr << 3) | addr
         cmd = (cmd << 20) | val
-        return cmd.to_bytes(length=3, byteorder='big')
+        return cmd.to_bytes(length=3, byteorder="big")
 
     # Compute register value for voltage setting.
     def volt2reg(self, volt=0):
@@ -799,17 +831,18 @@ class AD5781:
             print("%s: %d V out of range." % (self.__class__.__name__, volt))
             return -1
         else:
-            Df = (2**self.B - 1)*(volt - self.VREFN)/(self.VREFP - self.VREFN)
+            Df = (2**self.B - 1) * (volt - self.VREFN) / (self.VREFP - self.VREFN)
 
             # Shift by two as 2 lower bits are not used.
             Df = int(Df) << 2
 
             return int(Df)
 
+
 # BIAS DAC chip DAC11001.
 class DAC11001:
-    """
-    """
+    """ """
+
     # Commands.
     cmd_wr = 0x0
     cmd_rd = 0x1
@@ -822,20 +855,21 @@ class DAC11001:
     B = 20
 
     # Registers.
-    REGS = {'DAC_DATA_REG'      : 0x01  ,
-            'CONFIG1_REG'       : 0x02  ,
-            'DAC_CLEAR_DATA_REG': 0x03  ,
-            'TRIGGER_REG'       : 0x04  ,
-            'STATUS_REG'        : 0x05  ,
-            'CONFIG2_REG'       : 0x06  }
+    REGS = {
+        "DAC_DATA_REG": 0x01,
+        "CONFIG1_REG": 0x02,
+        "DAC_CLEAR_DATA_REG": 0x03,
+        "TRIGGER_REG": 0x04,
+        "STATUS_REG": 0x05,
+        "CONFIG2_REG": 0x06,
+    }
 
     # Register/address mapping.
     def reg2addr(self, reg="DAC_DATA_REG"):
         if reg in self.REGS:
             return self.REGS[reg]
         else:
-            print("%s: register %s not recognized." %
-                  (self.__class__.__name__, reg))
+            print("%s: register %s not recognized." % (self.__class__.__name__, reg))
             return -1
 
     def reg_rd(self, reg="DAC_DATA_REG"):
@@ -846,7 +880,7 @@ class DAC11001:
 
         # R/W bit (MSB) +  address (lower 7 bits).
         cmd = (self.cmd_rd << 7) | addr
-        #data |= (cmd << 24)
+        # data |= (cmd << 24)
         data = bytes(3) + bytes([cmd])
 
         return data
@@ -859,20 +893,20 @@ class DAC11001:
 
         # R/W bit (MSB) +  address (lower 7 bits).
         cmd = (self.cmd_wr << 7) | addr
-        #data |= (cmd << 24)
+        # data |= (cmd << 24)
 
         # Value is 24 bits (lower 4 not used).
-        #data |= val
-        data = val.to_bytes(length=3, byteorder='little') + bytes([cmd])
+        # data |= val
+        data = val.to_bytes(length=3, byteorder="little") + bytes([cmd])
 
         return data
 
     # Compute register value for voltage setting.
     def volt2reg(self, volt=0):
-        Df = np.round(2**self.B*(volt - self.VREFN)/(self.VREFP - self.VREFN))
-        if (Df<0 or Df>2**self.B):
+        Df = np.round(2**self.B * (volt - self.VREFN) / (self.VREFP - self.VREFN))
+        if Df < 0 or Df > 2**self.B:
             raise RuntimeError("%f V out of range." % (volt))
-        elif Df==2**self.B:
+        elif Df == 2**self.B:
             # special case: V=VREFP is actually not reachable, but that's annoying and nobody will mind if we round down by an LSB
             Df -= 1
 
@@ -882,51 +916,57 @@ class DAC11001:
 
 # ADMV8818 Filter Chip.
 class ADMV8818:
-    """
-    """
+    """ """
+
     # Commands.
     cmd_wr = 0x00
     cmd_rd = 0x01
 
     # Registers.
-    REGS = {'ADI_SPI_CONFIG_A'  : 0x000,
-            'ADI_SPI_CONFIG_B'  : 0x001,
-            'CHIPTYPE'          : 0x003,
-            'PRODUCT_ID_L'      : 0x004,
-            'PRODUCT_ID_H'      : 0x005,
-            'WR0_SW'            : 0x020,
-            'WR0_FILTER'        : 0x021}
+    REGS = {
+        "ADI_SPI_CONFIG_A": 0x000,
+        "ADI_SPI_CONFIG_B": 0x001,
+        "CHIPTYPE": 0x003,
+        "PRODUCT_ID_L": 0x004,
+        "PRODUCT_ID_H": 0x005,
+        "WR0_SW": 0x020,
+        "WR0_FILTER": 0x021,
+    }
 
     # Filter Bands.
     BANDS = {}
-    BANDS['LPF'] = {}
-    BANDS['LPF']['bypass']  = {'min': 2.00 , 'max': 18.00, 'switch': 0}
-    BANDS['LPF']['LPF1']    = {'min': 2.05 , 'max': 3.85 , 'switch': 1}
-    BANDS['LPF']['LPF2']    = {'min': 3.35 , 'max': 7.25 , 'switch': 2}
-    BANDS['LPF']['LPF3']    = {'min': 7.00 , 'max': 13.00, 'switch': 3}
-    BANDS['LPF']['LPF4']    = {'min': 12.55, 'max': 18.85, 'switch': 4}
-    BANDS['HPF'] = {}
-    BANDS['HPF']['bypass']  = {'min': 2.00 , 'max': 18.00, 'switch': 0}
-    BANDS['HPF']['HPF1']    = {'min': 1.75 , 'max': 3.55 , 'switch': 1}
-    BANDS['HPF']['HPF2']    = {'min': 3.40 , 'max': 7.25 , 'switch': 2}
-    BANDS['HPF']['HPF3']    = {'min': 6.60 , 'max': 12.60, 'switch': 3} # Actual max is 12.00. Modified to overlap bands.
-    BANDS['HPF']['HPF4']    = {'min': 12.50, 'max': 19.90, 'switch': 4}
+    BANDS["LPF"] = {}
+    BANDS["LPF"]["bypass"] = {"min": 2.00, "max": 18.00, "switch": 0}
+    BANDS["LPF"]["LPF1"] = {"min": 2.05, "max": 3.85, "switch": 1}
+    BANDS["LPF"]["LPF2"] = {"min": 3.35, "max": 7.25, "switch": 2}
+    BANDS["LPF"]["LPF3"] = {"min": 7.00, "max": 13.00, "switch": 3}
+    BANDS["LPF"]["LPF4"] = {"min": 12.55, "max": 18.85, "switch": 4}
+    BANDS["HPF"] = {}
+    BANDS["HPF"]["bypass"] = {"min": 2.00, "max": 18.00, "switch": 0}
+    BANDS["HPF"]["HPF1"] = {"min": 1.75, "max": 3.55, "switch": 1}
+    BANDS["HPF"]["HPF2"] = {"min": 3.40, "max": 7.25, "switch": 2}
+    BANDS["HPF"]["HPF3"] = {
+        "min": 6.60,
+        "max": 12.60,
+        "switch": 3,
+    }  # Actual max is 12.00. Modified to overlap bands.
+    BANDS["HPF"]["HPF4"] = {"min": 12.50, "max": 19.90, "switch": 4}
 
     # Number of bits for band setting.
     B = 4
 
     def __init__(self):
         # Initialize df for each band.
-        for b in self.BANDS['LPF'].keys():
-            span = self.BANDS['LPF'][b]['max'] - self.BANDS['LPF'][b]['min']  
-            df   = span/2**self.B
-            self.BANDS['LPF'][b]['span'] = span
-            self.BANDS['LPF'][b]['df']   = df
-        for b in self.BANDS['HPF'].keys():
-            span = self.BANDS['HPF'][b]['max'] - self.BANDS['HPF'][b]['min']  
-            df   = span/2**self.B
-            self.BANDS['HPF'][b]['span'] = span
-            self.BANDS['HPF'][b]['df']   = df
+        for b in self.BANDS["LPF"].keys():
+            span = self.BANDS["LPF"][b]["max"] - self.BANDS["LPF"][b]["min"]
+            df = span / 2**self.B
+            self.BANDS["LPF"][b]["span"] = span
+            self.BANDS["LPF"][b]["df"] = df
+        for b in self.BANDS["HPF"].keys():
+            span = self.BANDS["HPF"][b]["max"] - self.BANDS["HPF"][b]["min"]
+            df = span / 2**self.B
+            self.BANDS["HPF"][b]["span"] = span
+            self.BANDS["HPF"][b]["df"] = df
 
     def cmd_wr(self, reg="CHIPTYPE", value=0, debug=False):
         if reg in self.REGS.keys():
@@ -934,13 +974,17 @@ class ADMV8818:
             addr = self.REGS[reg]
 
             # Data.
-            byte = (addr & 0x7fff).to_bytes(length=2, byteorder='big') + value.to_bytes(length=1, byteorder='big')
+            byte = (addr & 0x7FFF).to_bytes(length=2, byteorder="big") + value.to_bytes(
+                length=1, byteorder="big"
+            )
 
             if debug:
                 for b in byte:
                     print("{}: 0x{:02X}".format(self.__class__.__name__, b))
         else:
-            raise RuntimeError("%s: register %s not found." %(self.__class__.__name__, reg))
+            raise RuntimeError(
+                "%s: register %s not found." % (self.__class__.__name__, reg)
+            )
 
         return byte
 
@@ -950,13 +994,17 @@ class ADMV8818:
             addr = self.REGS[reg]
 
             # Dummy.
-            byte = (0x8000 | (addr & 0x7fff)).to_bytes(length=2, byteorder='big') + bytes(1)
+            byte = (0x8000 | (addr & 0x7FFF)).to_bytes(
+                length=2, byteorder="big"
+            ) + bytes(1)
 
             if debug:
                 for b in byte:
                     print("{}: 0x{:02X}".format(self.__class__.__name__, b))
         else:
-            raise RuntimeError("%s: register %s not found." %(self.__class__.__name__, reg))
+            raise RuntimeError(
+                "%s: register %s not found." % (self.__class__.__name__, reg)
+            )
 
         return byte
 
@@ -965,26 +1013,34 @@ class ADMV8818:
 
         if section == "LPF":
             for b in self.BANDS[section].keys():
-                if b != 'bypass':
-                    fmin = self.BANDS[section][b]['min'] 
-                    fmax = self.BANDS[section][b]['max'] 
-                    if ((f > fmin) and (f < fmax)):
+                if b != "bypass":
+                    fmin = self.BANDS[section][b]["min"]
+                    fmax = self.BANDS[section][b]["max"]
+                    if (f > fmin) and (f < fmax):
                         ret = b
                         break
         elif section == "HPF":
             for b in self.BANDS[section].keys():
-                if b != 'bypass':
-                    fmin = self.BANDS[section][b]['min'] 
-                    fmax = self.BANDS[section][b]['max'] 
-                    if ((f > fmin) and (f < fmax)):
+                if b != "bypass":
+                    fmin = self.BANDS[section][b]["min"]
+                    fmax = self.BANDS[section][b]["max"]
+                    if (f > fmin) and (f < fmax):
                         ret = b
                         break
 
         if debug:
             if ret is not None:
-                print("{}: frequency {:.2f} GHz for section {} found in band {}".format(self.__class__.__name__, f, section, b))
+                print(
+                    "{}: frequency {:.2f} GHz for section {} found in band {}".format(
+                        self.__class__.__name__, f, section, b
+                    )
+                )
             else:
-                print("{}: frequency {:.2f} GHz for section {} not found.".format(self.__class__.__name__, f, section))
+                print(
+                    "{}: frequency {:.2f} GHz for section {} not found.".format(
+                        self.__class__.__name__, f, section
+                    )
+                )
 
         return ret
 
@@ -993,44 +1049,60 @@ class ADMV8818:
 
         if section == "LPF":
             if band in self.BANDS[section].keys():
-                fmin = self.BANDS[section][band]['min'] 
-                fmax = self.BANDS[section][band]['max'] 
-                span = self.BANDS[section][band]['span'] 
-                df   = self.BANDS[section][band]['df'] 
-                if ((f > fmin) and (f < fmax)):
-                    ret = int((f - fmin)/df)
+                fmin = self.BANDS[section][band]["min"]
+                fmax = self.BANDS[section][band]["max"]
+                span = self.BANDS[section][band]["span"]
+                df = self.BANDS[section][band]["df"]
+                if (f > fmin) and (f < fmax):
+                    ret = int((f - fmin) / df)
         elif section == "HPF":
             if band in self.BANDS[section].keys():
-                fmin = self.BANDS[section][band]['min'] 
-                fmax = self.BANDS[section][band]['max'] 
-                span = self.BANDS[section][band]['span'] 
-                df   = self.BANDS[section][band]['df'] 
-                if ((f > fmin) and (f < fmax)):
-                    ret = int((f - fmin)/df)
-        
+                fmin = self.BANDS[section][band]["min"]
+                fmax = self.BANDS[section][band]["max"]
+                span = self.BANDS[section][band]["span"]
+                df = self.BANDS[section][band]["df"]
+                if (f > fmin) and (f < fmax):
+                    ret = int((f - fmin) / df)
+
         if ret is not None:
             if debug:
-                print("{}: fmin = {:.2f} GHz, fmax = {:.2f} GHz, span = {:.2f} GHz, df = {:.3f} GHz, f = {:.2f} GHz, bits = {}".format(self.__class__.__name__, fmin, fmax, span, df, f, ret))
+                print(
+                    "{}: fmin = {:.2f} GHz, fmax = {:.2f} GHz, span = {:.2f} GHz, df = {:.3f} GHz, f = {:.2f} GHz, bits = {}".format(
+                        self.__class__.__name__, fmin, fmax, span, df, f, ret
+                    )
+                )
         else:
-            print("{}: frequency {:.2f} GHz not found in section {} band {}.".format(self.__class__.__name__, f, section, band))
+            print(
+                "{}: frequency {:.2f} GHz not found in section {} band {}.".format(
+                    self.__class__.__name__, f, section, band
+                )
+            )
 
         return ret
 
     def band2switch(self, section="LPF", band="LPF1", debug=False):
         if section in self.BANDS.keys():
             if band in self.BANDS[section].keys():
-                return self.BANDS[section][band]['switch'] 
-            else: 
-                print("{}: band {} not found in section {}. Using bypass by default.".format(self.__class__.__name__, band, section))
+                return self.BANDS[section][band]["switch"]
+            else:
+                print(
+                    "{}: band {} not found in section {}. Using bypass by default.".format(
+                        self.__class__.__name__, band, section
+                    )
+                )
                 return 0
-        else: 
-            print("{}: section {} not found. Using bypass by default.".format(self.__class__.__name__, section))
+        else:
+            print(
+                "{}: section {} not found. Using bypass by default.".format(
+                    self.__class__.__name__, section
+                )
+            )
             return 0
+
 
 # Attenuator class: This class instantiates spi and PE43705 to simplify access to attenuator.
 class attenuator:
-    """
-    """
+    """ """
 
     # Constructor.
     def __init__(self, spi_ip, ch=0, nch=3, le=[0], en_l="high", cs_t="pulse"):
@@ -1055,10 +1127,10 @@ class attenuator:
         # Write value using spi.
         self.spi.send_receive_m(reg, self.ch_en, self.cs_t)
 
+
 # Filter class: This class instantiates spi and ADMV8818 to simplify access to the filter chip.
 class prog_filter:
-    """
-    """
+    """ """
 
     # Constructor.
     def __init__(self, spi_ip, ch=0, cs_t=""):
@@ -1073,7 +1145,7 @@ class prog_filter:
         self.cs_t = cs_t
 
         # All CS to high value.
-        self.spi.SPI_SSR = 0xff
+        self.spi.SPI_SSR = 0xFF
 
     def reg_wr(self, reg="CHIPTYPE", value=0, debug=False):
         if debug:
@@ -1093,69 +1165,100 @@ class prog_filter:
         byte = self.ic.cmd_rd(reg=reg, debug=debug)
 
         # Send/receive.
-        ret = int.from_bytes(self.spi.send_receive_m(byte, self.ch_en, self.cs_t), byteorder="big")
+        ret = int.from_bytes(
+            self.spi.send_receive_m(byte, self.ch_en, self.cs_t), byteorder="big"
+        )
 
         # Execute write.
-        return ret & 0xff
+        return ret & 0xFF
 
     def set_filter(self, fc=0, bw=None, ftype="lowpass", debug=False):
         # Low-pass.
-        if ftype == 'lowpass':
+        if ftype == "lowpass":
             if debug:
-                print("{}: setting {} filter type, fc = {:.2f} GHz.".format(self.__class__.__name__, ftype, fc))
+                print(
+                    "{}: setting {} filter type, fc = {:.2f} GHz.".format(
+                        self.__class__.__name__, ftype, fc
+                    )
+                )
 
             band_lpf = self.ic.freq2band(f=fc, section="LPF", debug=debug)
-            bits_lpf = self.ic.freq2bits(f=fc, section="LPF", band=band_lpf, debug=debug)
-            band_hpf = 'bypass'
+            bits_lpf = self.ic.freq2bits(
+                f=fc, section="LPF", band=band_lpf, debug=debug
+            )
+            band_hpf = "bypass"
             bits_hpf = 0
 
-        elif ftype == 'highpass':
+        elif ftype == "highpass":
             if debug:
-                print("{}: setting {} filter type, fc = {:.2f} GHz.".format(self.__class__.__name__, ftype, fc))
+                print(
+                    "{}: setting {} filter type, fc = {:.2f} GHz.".format(
+                        self.__class__.__name__, ftype, fc
+                    )
+                )
 
-            band_lpf = 'bypass'
+            band_lpf = "bypass"
             bits_lpf = 0
             band_hpf = self.ic.freq2band(f=fc, section="HPF", debug=debug)
-            bits_hpf = self.ic.freq2bits(f=fc, section="HPF", band=band_hpf, debug=debug)
+            bits_hpf = self.ic.freq2bits(
+                f=fc, section="HPF", band=band_hpf, debug=debug
+            )
 
-        elif ftype == 'bandpass':
+        elif ftype == "bandpass":
             # Default bw is 2 GHz.
             if bw is None:
                 bw = 2
-            f1 = fc-bw/2
-            f2 = fc+bw/2
+            f1 = fc - bw / 2
+            f2 = fc + bw / 2
             if debug:
-                print("{}: setting {} filter type, fc = {:.2f} GHz, bw = {:.2f} GHz.".format(self.__class__.__name__, ftype, fc, bw))
+                print(
+                    "{}: setting {} filter type, fc = {:.2f} GHz, bw = {:.2f} GHz.".format(
+                        self.__class__.__name__, ftype, fc, bw
+                    )
+                )
 
             band_lpf = self.ic.freq2band(f=f2, section="LPF", debug=debug)
-            bits_lpf = self.ic.freq2bits(f=f2, section="LPF", band=band_lpf, debug=debug)
+            bits_lpf = self.ic.freq2bits(
+                f=f2, section="LPF", band=band_lpf, debug=debug
+            )
             band_hpf = self.ic.freq2band(f=f1, section="HPF", debug=debug)
-            bits_hpf = self.ic.freq2bits(f=f1, section="HPF", band=band_hpf, debug=debug)
+            bits_hpf = self.ic.freq2bits(
+                f=f1, section="HPF", band=band_hpf, debug=debug
+            )
 
-        elif ftype == 'bypass':
+        elif ftype == "bypass":
             if debug:
-                print("{}: setting filter to bypass mode.".format(self.__class__.__name__))
+                print(
+                    "{}: setting filter to bypass mode.".format(self.__class__.__name__)
+                )
 
-            band_lpf = 'bypass'
+            band_lpf = "bypass"
             bits_lpf = 0
-            band_hpf = 'bypass'
+            band_hpf = "bypass"
             bits_hpf = 0
-    
+
         else:
-            raise Warning("%s: filter type %s not supported." % (self.__class__.__name__, ftype))
+            raise Warning(
+                "%s: filter type %s not supported." % (self.__class__.__name__, ftype)
+            )
 
         # WR0_SW register.
-        value = 0xc0 + (self.ic.band2switch(section="HPF", band=band_hpf) << 3) + self.ic.band2switch(section="LPF", band=band_lpf)
+        value = (
+            0xC0
+            + (self.ic.band2switch(section="HPF", band=band_hpf) << 3)
+            + self.ic.band2switch(section="LPF", band=band_lpf)
+        )
         self.reg_wr(reg="WR0_SW", value=value, debug=debug)
 
         # WR0_FILTER register.
         value = (bits_hpf << 4) + bits_lpf
         self.reg_wr(reg="WR0_FILTER", value=value, debug=debug)
 
+
 # Power, Switch and Fan.
 class SwitchControl:
-    """
-    """
+    """ """
+
     # Constructor.
     def __init__(self, spi_ip):
         self.spi = spi_ip
@@ -1164,7 +1267,9 @@ class SwitchControl:
 
     def add_MCP(self, ch_en, outputs, dev_addr=0):
         if len(outputs) != 8:
-            raise RuntimeError("must define all 8 outputs from the MCP23S08 (use None for NC pins)")
+            raise RuntimeError(
+                "must define all 8 outputs from the MCP23S08 (use None for NC pins)"
+            )
         defaults = 0
         for iOutput, output in enumerate(outputs):
             defaults <<= 1
@@ -1172,7 +1277,9 @@ class SwitchControl:
                 netname, defaultval = output
                 self.net2port[netname] = (len(self.devs), iOutput)
                 defaults += defaultval
-        self.devs.append(power_sw_fan(self.spi, ch_en=ch_en, dev_addr=dev_addr, defaults=defaults))
+        self.devs.append(
+            power_sw_fan(self.spi, ch_en=ch_en, dev_addr=dev_addr, defaults=defaults)
+        )
 
     def __setitem__(self, netname, val):
         iDev, iBit = self.net2port[netname]
@@ -1183,9 +1290,9 @@ class SwitchControl:
         else:
             raise RuntimeError("invalid value:", val)
 
+
 class power_sw_fan:
-    """
-    """
+    """ """
 
     # Constructor.
     def __init__(self, spi_ip, ch_en, defaults=0xFF, dev_addr=0, cs_t=""):
@@ -1200,7 +1307,7 @@ class power_sw_fan:
         self.cs_t = cs_t
 
         # All CS to high value.
-        self.spi.SPI_SSR = 0xff
+        self.spi.SPI_SSR = 0xFF
 
         # Set all bits as outputs.
         byte = self.mcp.reg_wr("IODIR_REG", 0x00)
@@ -1221,14 +1328,14 @@ class power_sw_fan:
 
         # Set bits.
         for i in range(len(bits)):
-            val |= (1 << bits[i])
+            val |= 1 << bits[i]
 
         # Set value to hardware.
         byte = self.mcp.reg_wr("GPIO_REG", val)
         self.spi.send_receive_m(byte, self.ch_en, self.cs_t)
 
     def bits_reset(self, bits=[0]):
-        val = 0xff
+        val = 0xFF
 
         # Read actual value.
         byte = self.mcp.reg_rd("GPIO_REG")
@@ -1243,10 +1350,10 @@ class power_sw_fan:
         byte = self.mcp.reg_wr("GPIO_REG", val)
         self.spi.send_receive_m(byte, self.ch_en, self.cs_t)
 
+
 # LO Synthesis.
 class lo_synth:
-    """
-    """
+    """ """
 
     # Constructor.
     def __init__(self, spi_ip, nch=2, le=[0], en_l="low", cs_t=""):
@@ -1261,7 +1368,7 @@ class lo_synth:
         self.cs_t = cs_t
 
         # All CS to high value.
-        self.spi.SPI_SSR = 0xff
+        self.spi.SPI_SSR = 0xFF
 
         # Write 0x00 to reg 0x73
         self.reg_wr("LD_PD_ADC_REG", 0x00)
@@ -1322,7 +1429,7 @@ class lo_synth:
         # Write 0x83 to reg 0x28
         self.reg_wr("LOCK_REG", 0x83)
         # Write 0xcd to reg 0x27
-        self.reg_wr("BLEED1_REG", 0xcd)
+        self.reg_wr("BLEED1_REG", 0xCD)
         # Write 0x2f to reg 0x26
         self.reg_wr("BLEED0_REG", 0x2F)
         # Write 0x07 to reg 0x25
@@ -1392,36 +1499,45 @@ class lo_synth:
         else:
             # Write FRAC1 register.
             # MSB
-            self.reg_wr('FRAC2_LOW_REG', regs['FRAC1']['MSB'])
+            self.reg_wr("FRAC2_LOW_REG", regs["FRAC1"]["MSB"])
 
             # HIGH.
-            self.reg_wr('FRAC1_HIGH_REG', regs['FRAC1']['HIGH'])
+            self.reg_wr("FRAC1_HIGH_REG", regs["FRAC1"]["HIGH"])
 
             # MID.
-            self.reg_wr('FRAC1_MID_REG', regs['FRAC1']['MID'])
+            self.reg_wr("FRAC1_MID_REG", regs["FRAC1"]["MID"])
 
             # LOW.
-            self.reg_wr('FRAC1_LOW_REG', regs['FRAC1']['LOW'])
+            self.reg_wr("FRAC1_LOW_REG", regs["FRAC1"]["LOW"])
 
             # Write INT register.
             # HIGH.
-            self.reg_wr('INT_HIGH_REG', regs['INT']['HIGH'])
+            self.reg_wr("INT_HIGH_REG", regs["INT"]["HIGH"])
 
             # LOW
-            self.reg_wr('INT_LOW_REG', regs['INT']['LOW'])
+            self.reg_wr("INT_LOW_REG", regs["INT"]["LOW"])
+
 
 # Bias dac.
 class dac_bias:
-    """
-    """
+    """ """
 
     # Constructor.
-    def __init__(self, spi_ip, ch_en, cs_t="", gpio_ip=None, version=1, fpga_board="ZCU216", debug=False):
+    def __init__(
+        self,
+        spi_ip,
+        ch_en,
+        cs_t="",
+        gpio_ip=None,
+        version=1,
+        fpga_board="ZCU216",
+        debug=False,
+    ):
         # SPI.
         self.ch_en = ch_en
         self.cs_t = cs_t
         self.spi = spi_ip
-        self.spi.SPI_SSR = 0xff
+        self.spi.SPI_SSR = 0xFF
 
         # Version.
         self.version = version
@@ -1432,7 +1548,7 @@ class dac_bias:
         if debug:
             print("{}: DAC Channel = {}.".format(self.__class__.__name__, self.ch_en))
 
-        if self.fpga_board == 'ZCU111':
+        if self.fpga_board == "ZCU111":
             # AD5791.
             self.ad = AD5781()
 
@@ -1442,7 +1558,7 @@ class dac_bias:
             # Initialize to 0 volts.
             self.set_volt(0)
 
-        elif self.fpga_board == 'ZCU216':
+        elif self.fpga_board == "ZCU216":
             if version == 1:
                 # GPIO.
                 self.gpio = gpio_ip.channel1
@@ -1451,21 +1567,24 @@ class dac_bias:
                 self.ad = DAC11001()
 
                 # Initialize control register.
-                self.write(reg="CONFIG1_REG", val=0x4e00)
+                self.write(reg="CONFIG1_REG", val=0x4E00)
 
                 # Initialize to 0 volts.
                 self.set_volt(0)
 
                 # Enable output switch.
-                self.gpio.write(1,0x1)
+                self.gpio.write(1, 0x1)
             else:
-                raise RuntimeError("%s: version %d not supported." % (self.__class__.__name, version))
+                raise RuntimeError(
+                    "%s: version %d not supported." % (self.__class__.__name, version)
+                )
         else:
-            raise RuntimeError("%s: board %s not recognized." % (self.__class__.__name__, fpga_board))
-
+            raise RuntimeError(
+                "%s: board %s not recognized." % (self.__class__.__name__, fpga_board)
+            )
 
     def read(self, reg="DAC_REG"):
-        if self.fpga_board == 'ZCU216' and self.version == 1:
+        if self.fpga_board == "ZCU216" and self.version == 1:
             # Read command.
             data = self.ad.reg_rd(reg)
             reg = self.spi.send_receive_m(data, self.ch_en, self.cs_t)
@@ -1473,7 +1592,7 @@ class dac_bias:
             # Another read with dummy data to allow clocking register out.
             data = bytes(4)
             reg = self.spi.send_receive_m(data, self.ch_en, self.cs_t)
-            return int.from_bytes(reg[:3], byteorder='little')
+            return int.from_bytes(reg[:3], byteorder="little")
         else:
             # Read command.
             byte = self.ad.reg_rd(reg)
@@ -1486,12 +1605,16 @@ class dac_bias:
         return reg
 
     def write(self, reg="DAC_REG", val=0, debug=False):
-        if self.fpga_board == 'ZCU216' and self.version == 1:
+        if self.fpga_board == "ZCU216" and self.version == 1:
             # Write command.
             data = self.ad.reg_wr(reg, val)
 
             if debug:
-                print("{}: writing register {} with values {}.".format(self.__class__.__name__, reg, data))
+                print(
+                    "{}: writing register {} with values {}.".format(
+                        self.__class__.__name__, reg, data
+                    )
+                )
 
             self.spi.send_receive_m(data, self.ch_en, self.cs_t)
         else:
@@ -1499,7 +1622,11 @@ class dac_bias:
             data = self.ad.reg_wr(reg, val)
 
             if debug:
-                print("{}: writing register {} with values {}.".format(self.__class__.__name__, reg, data))
+                print(
+                    "{}: writing register {} with values {}.".format(
+                        self.__class__.__name__, reg, data
+                    )
+                )
 
             self.spi.send_receive_m(data, self.ch_en, self.cs_t)
 
@@ -1507,33 +1634,35 @@ class dac_bias:
         # Convert volts to register value.
         val = self.ad.volt2reg(volt)
 
-        if self.fpga_board == 'ZCU216' and self.version == 1:
+        if self.fpga_board == "ZCU216" and self.version == 1:
             self.write(reg="DAC_DATA_REG", val=val, debug=debug)
         else:
             self.write(reg="DAC_REG", val=val, debug=debug)
 
+
 # Variable Gain Amp chip LMH6401.
 class LMH6401:
-    """
-    """
+    """ """
+
     # Commands.
     cmd_wr = 0x00
     cmd_rd = 0x80
 
     # Registers.
-    REGS = {'REVID_REG': 0x00,
-            'PRODID_REG': 0x01,
-            'GAIN_REG': 0x02,
-            'TGAIN_REG': 0x04,
-            'TFREQ_REG': 0x05}
+    REGS = {
+        "REVID_REG": 0x00,
+        "PRODID_REG": 0x01,
+        "GAIN_REG": 0x02,
+        "TGAIN_REG": 0x04,
+        "TFREQ_REG": 0x05,
+    }
 
     # Register/address mapping.
     def reg2addr(self, reg="GAIN_REG"):
         if reg in self.REGS:
             return self.REGS[reg]
         else:
-            print("%s: register %s not recognized." %
-                  (self.__class__.__name__, reg))
+            print("%s: register %s not recognized." % (self.__class__.__name__, reg))
             return -1
 
     # Data array: 2 bytes.
@@ -1558,10 +1687,10 @@ class LMH6401:
 
         return bytes([cmd, val])
 
+
 # Variable step amp class: This class instantiates spi and LMH6401 to simplify access to amplifier.
 class gain:
-    """
-    """
+    """ """
 
     # Number of bits of gain setting.
     B = 6
@@ -1602,12 +1731,24 @@ class gain:
             # Write value using spi.
             self.spi.send_receive_m(byte, self.ch_en, self.cs_t)
 
+
 # Class to describe the ADC-RF channel chain.
-class adc_rf_ch():
-    """
-    """
+class adc_rf_ch:
+    """ """
+
     # Constructor.
-    def __init__(self, ch=0, switches=None, attn_spi=None, filter_spi=None, version=2, fpga_board="ZCU216", rfboard_ch=0, rfboard_sel=None, debug=False):
+    def __init__(
+        self,
+        ch=0,
+        switches=None,
+        attn_spi=None,
+        filter_spi=None,
+        version=2,
+        fpga_board="ZCU216",
+        rfboard_ch=0,
+        rfboard_sel=None,
+        debug=False,
+    ):
         # Channel number.
         self.ch = ch
 
@@ -1618,8 +1759,7 @@ class adc_rf_ch():
         self.fpga_board = fpga_board
 
         # ZCU111 board.
-        if self.fpga_board == 'ZCU111':
-
+        if self.fpga_board == "ZCU111":
             # Power switches.
             self.switches = switches
 
@@ -1630,7 +1770,7 @@ class adc_rf_ch():
             self.set_attn_db(30)
 
         # ZCU216 board.
-        elif self.fpga_board == 'ZCU216':
+        elif self.fpga_board == "ZCU216":
             if version == 1:
                 # Board selection.
                 self.rfboard_ch = rfboard_ch
@@ -1640,32 +1780,51 @@ class adc_rf_ch():
                 self.local_ch = ch % 2
 
                 if debug:
-                    print("{}: ADC Channel = {}, Daughter Card = {}, Daughter Card DAC channel {}.".format(self.__class__.__name__, self.ch, self.rfboard_ch, self.local_ch))
+                    print(
+                        "{}: ADC Channel = {}, Daughter Card = {}, Daughter Card DAC channel {}.".format(
+                            self.__class__.__name__,
+                            self.ch,
+                            self.rfboard_ch,
+                            self.local_ch,
+                        )
+                    )
 
                 # Attenuators. There is 1 per ADC Channel.
                 self.attn = []
                 self.attn.append(attenuator(attn_spi, ch=self.local_ch, nch=1, le=[0]))
                 if debug:
-                    print("{}: adding attenuator with address {}.".format(self.__class__.__name__, self.local_ch))
+                    print(
+                        "{}: adding attenuator with address {}.".format(
+                            self.__class__.__name__, self.local_ch
+                        )
+                    )
 
                 # Filters. There is 1 per ADC Channel.
                 self.filter = prog_filter(filter_spi, ch=self.local_ch)
                 if debug:
-                    print("{}: adding filter with address {}.".format(self.__class__.__name__, self.local_ch))
+                    print(
+                        "{}: adding filter with address {}.".format(
+                            self.__class__.__name__, self.local_ch
+                        )
+                    )
 
                 # Initialize filter.
                 self.init_filter()
 
             else:
-                raise RuntimeError("%s: version %d not supported." % (self.__class__.__name, version))
+                raise RuntimeError(
+                    "%s: version %d not supported." % (self.__class__.__name, version)
+                )
         else:
-            raise RuntimeError("%s: board %s not recognized." % (self.__class__.__name__, fpga_board))
+            raise RuntimeError(
+                "%s: board %s not recognized." % (self.__class__.__name__, fpga_board)
+            )
 
     # Set attenuator.
     def set_attn_db(self, db=0, debug=False):
-        if self.fpga_board == 'ZCU216' and self.version == 1:
+        if self.fpga_board == "ZCU216" and self.version == 1:
             # Enable this daughter card.
-            self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+            self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
             # Set attenuator.
             self.attn[0].set_att(db)
@@ -1676,9 +1835,9 @@ class adc_rf_ch():
             self.attn.set_att(db)
             self.enable()
 
-    def init_filter(self,debug=False):
+    def init_filter(self, debug=False):
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Program ADI_SPI_CONFIG_A register to 0x3C.
         self.filter.reg_wr(reg="ADI_SPI_CONFIG_A", value=0x3C, debug=debug)
@@ -1688,7 +1847,7 @@ class adc_rf_ch():
 
     def set_filter(self, fc=0, bw=None, ftype="lowpass", debug=False):
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Set filter.
         self.filter.set_filter(fc=fc, bw=bw, ftype=ftype, debug=debug)
@@ -1701,28 +1860,29 @@ class adc_rf_ch():
             print("{}: reading register {}".format(self.__class__.__name__, reg))
 
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Set filter.
         ret = self.filter.reg_rd(reg=reg, debug=debug)
 
         # Disable all daughter cards.
         self.brd_sel.disable()
-        
-        return ret 
+
+        return ret
 
     def enable(self):
         # Turn on 5V power.
-        self.switches["RF2IF5V_EN%d"%(self.ch)] = 1
+        self.switches["RF2IF5V_EN%d" % (self.ch)] = 1
 
     def disable(self):
         # Turn off 5V power.
-        self.switches["RF2IF5V_EN%d"%(self.ch)] = 0
+        self.switches["RF2IF5V_EN%d" % (self.ch)] = 0
+
 
 # Class to describe the ADC-DC channel chain.
-class adc_dc_ch():
-    """
-    """
+class adc_dc_ch:
+    """ """
+
     # Constructor.
     def __init__(self, ch, switches, gain_spi, version=2):
         # Channel number.
@@ -1736,8 +1896,10 @@ class adc_dc_ch():
 
         # Variable Gain Amplifier.
         if ch < 4 or ch > 7:
-            print("%s: channel %d not valid for ADC-DC type" %
-                  (self.__class__.__name__, ch))
+            print(
+                "%s: channel %d not valid for ADC-DC type"
+                % (self.__class__.__name__, ch)
+            )
 
         self.gain = gain(gain_spi, ch_en=ch)
 
@@ -1747,27 +1909,39 @@ class adc_dc_ch():
     # Set gain.
     def set_gain_db(self, db=0):
         self.gain.set_gain(db)
-        if self.version==2:
+        if self.version == 2:
             self.enable()
 
     def enable(self):
-        if self.version!=2:
+        if self.version != 2:
             raise RuntimeError("enable/disable not supported for version", self.version)
         # Power up.
-        self.switches["RF2IF_PD%d"%(self.ch)] = 0
+        self.switches["RF2IF_PD%d" % (self.ch)] = 0
 
     def disable(self):
-        if self.version!=2:
+        if self.version != 2:
             raise RuntimeError("enable/disable not supported for version", self.version)
         # Power down.
-        self.switches["RF2IF_PD%d"%(self.ch)] = 1
+        self.switches["RF2IF_PD%d" % (self.ch)] = 1
+
 
 # Class to describe the DAC channel chain.
-class dac_ch():
-    """
-    """
+class dac_ch:
+    """ """
+
     # Constructor.
-    def __init__(self, ch=0, switches=None, attn_spi=None, filter_spi=None, version=2, fpga_board="ZCU216", rfboard_ch=0, rfboard_sel=None, debug=False):
+    def __init__(
+        self,
+        ch=0,
+        switches=None,
+        attn_spi=None,
+        filter_spi=None,
+        version=2,
+        fpga_board="ZCU216",
+        rfboard_ch=0,
+        rfboard_sel=None,
+        debug=False,
+    ):
         # Channel number.
         self.ch = ch
 
@@ -1778,7 +1952,7 @@ class dac_ch():
         self.fpga_board = fpga_board
 
         # ZCU111 board.
-        if self.fpga_board == 'ZCU111':
+        if self.fpga_board == "ZCU111":
             # RF input and power switches.
             self.switches = switches
 
@@ -1789,9 +1963,9 @@ class dac_ch():
 
             # Initialize in off state.
             self.disable()
-        
+
         # ZCU216 board.
-        elif self.fpga_board == 'ZCU216':
+        elif self.fpga_board == "ZCU216":
             if version == 1:
                 # Board selection.
                 self.rfboard_ch = rfboard_ch
@@ -1801,82 +1975,99 @@ class dac_ch():
                 self.local_ch = ch % 4
 
                 if debug:
-                    print("{}: DAC Channel = {}, Daughter Card = {}, Daughter Card DAC channel {}.".format(self.__class__.__name__, self.ch, self.rfboard_ch, self.local_ch))
+                    print(
+                        "{}: DAC Channel = {}, Daughter Card = {}, Daughter Card DAC channel {}.".format(
+                            self.__class__.__name__,
+                            self.ch,
+                            self.rfboard_ch,
+                            self.local_ch,
+                        )
+                    )
 
                 # Attenuators. There are 2 per DAC Channel.
                 self.attn = []
                 for i in range(2):
-                    addr = 2*self.local_ch+i
+                    addr = 2 * self.local_ch + i
                     self.attn.append(attenuator(attn_spi, ch=addr, nch=1, le=[0]))
                     if debug:
-                        print("{}: adding attenuator with address {}.".format(self.__class__.__name__, addr))
+                        print(
+                            "{}: adding attenuator with address {}.".format(
+                                self.__class__.__name__, addr
+                            )
+                        )
 
                 # Filters. There is 1 per ADC Channel.
                 self.filter = prog_filter(filter_spi, ch=self.local_ch)
                 if debug:
-                    print("{}: adding filter with address {}.".format(self.__class__.__name__, self.local_ch))
+                    print(
+                        "{}: adding filter with address {}.".format(
+                            self.__class__.__name__, self.local_ch
+                        )
+                    )
 
                 # Initialize filter.
                 self.init_filter()
 
             else:
-                raise RuntimeError("%s: version %d not supported." % (self.__class__.__name, version))
+                raise RuntimeError(
+                    "%s: version %d not supported." % (self.__class__.__name, version)
+                )
         else:
-            raise RuntimeError("%s: board %s not recognized." % (self.__class__.__name__, fpga_board))
+            raise RuntimeError(
+                "%s: board %s not recognized." % (self.__class__.__name__, fpga_board)
+            )
 
     # Switch selection.
     def rfsw_sel(self, sel="RF"):
         if sel == "RF":
             # Set logic one.
             # Select RF output from switch.
-            self.switches["CH%d_PE42020_CTL"%(self.ch)] = 1
+            self.switches["CH%d_PE42020_CTL" % (self.ch)] = 1
             # Turn on 5V power to RF chain.
-            self.switches["IF2RF5V_EN%d"%(self.ch)] = 1
-            if self.version==2:
+            self.switches["IF2RF5V_EN%d" % (self.ch)] = 1
+            if self.version == 2:
                 # Power down DC amplifier.
-                self.switches["IF2RF_PD%d"%(self.ch)] = 1
+                self.switches["IF2RF_PD%d" % (self.ch)] = 1
         elif sel == "DC":
             # Select DC output from switch.
-            self.switches["CH%d_PE42020_CTL"%(self.ch)] = 0
+            self.switches["CH%d_PE42020_CTL" % (self.ch)] = 0
             # Turn off 5V power to RF chain.
-            self.switches["IF2RF5V_EN%d"%(self.ch)] = 0
-            if self.version==2:
+            self.switches["IF2RF5V_EN%d" % (self.ch)] = 0
+            if self.version == 2:
                 # Power up DC amplifier.
-                self.switches["IF2RF_PD%d"%(self.ch)] = 0
+                self.switches["IF2RF_PD%d" % (self.ch)] = 0
         elif sel == "OFF":
             # Select RF output from switch.
-            self.switches["CH%d_PE42020_CTL"%(self.ch)] = 1
+            self.switches["CH%d_PE42020_CTL" % (self.ch)] = 1
             # Turn off 5V power to RF chain.
-            self.switches["IF2RF5V_EN%d"%(self.ch)] = 0
-            if self.version==2:
+            self.switches["IF2RF5V_EN%d" % (self.ch)] = 0
+            if self.version == 2:
                 # Power down DC amplifier.
-                self.switches["IF2RF_PD%d"%(self.ch)] = 1
+                self.switches["IF2RF_PD%d" % (self.ch)] = 1
         else:
-            print("%s: selection %s not recoginzed." %
-                  (self.__class__.__name__, sel))
+            print("%s: selection %s not recoginzed." % (self.__class__.__name__, sel))
 
     # Set attenuator.
     def set_attn_db(self, attn=0, db=0, debug=False):
         # Enable daughter card.
-        if self.fpga_board == 'ZCU216' and self.version == 1:
-            # Board selection logic.    
-            self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        if self.fpga_board == "ZCU216" and self.version == 1:
+            # Board selection logic.
+            self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
-        # Set attenuator.        
+        # Set attenuator.
         if attn < len(self.attn):
             self.attn[attn].set_att(db)
         else:
-            print("%s: attenuator %d not in chain." %
-                  (self.__class__.__name__, attn))
+            print("%s: attenuator %d not in chain." % (self.__class__.__name__, attn))
 
         # Disable daughter card.
-        if self.fpga_board == 'ZCU216' and self.version == 1:
-            # Board selection logic.    
+        if self.fpga_board == "ZCU216" and self.version == 1:
+            # Board selection logic.
             self.brd_sel.disable()
 
-    def init_filter(self,debug=False):
+    def init_filter(self, debug=False):
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Program ADI_SPI_CONFIG_A register to 0x3C.
         self.filter.reg_wr(reg="ADI_SPI_CONFIG_A", value=0x3C, debug=debug)
@@ -1886,7 +2077,7 @@ class dac_ch():
 
     def set_filter(self, fc=0, bw=None, ftype="lowpass", debug=False):
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Set filter.
         self.filter.set_filter(fc=fc, bw=bw, ftype=ftype, debug=debug)
@@ -1899,18 +2090,18 @@ class dac_ch():
             print("{}: reading register {}".format(self.__class__.__name__, reg))
 
         # Enable this daughter card.
-        self.brd_sel.enable(board_id = self.rfboard_ch, debug=debug)
+        self.brd_sel.enable(board_id=self.rfboard_ch, debug=debug)
 
         # Set filter.
         ret = self.filter.reg_rd(reg=reg, debug=debug)
 
         # Disable all daughter cards.
         self.brd_sel.disable()
-        
-        return ret 
+
+        return ret
 
     def set_rf(self, att1, att2):
-        if self.fpga_board == 'ZCU216' and self.version == 1:
+        if self.fpga_board == "ZCU216" and self.version == 1:
             # TODO: Check that this is a RF daughter card.
             self.set_attn_db(attn=0, db=att1)
             self.set_attn_db(attn=1, db=att2)
@@ -1927,6 +2118,7 @@ class dac_ch():
         self.set_attn_db(attn=0, db=31.75)
         self.set_attn_db(attn=1, db=31.75)
 
+
 class BoardSelection:
     """
     This class is used to enable one daughter card on the RF Board for the ZCU216, V1.
@@ -1935,7 +2127,7 @@ class BoardSelection:
     def __init__(self, gpio_ip):
         self.gpio = gpio_ip.channel1
 
-    def enable(self, board_id = 0, debug=False):
+    def enable(self, board_id=0, debug=False):
         # There are 8 boards: 3 bits for selection, 1 bit for active/inactive.
         # Bits:
         # |-----|-------|-------|-------|
@@ -1948,30 +2140,34 @@ class BoardSelection:
         # * 0 : disable.
         # * 1 : enable (selected board).
         val_ = (1 << 3) + board_id
-        self.gpio.write(val_, 0xf)
+        self.gpio.write(val_, 0xF)
 
         if debug:
-            print("{}: setting vaue = 0x{:01X}".format(self.__class__.__name__,val_))
+            print("{}: setting vaue = 0x{:01X}".format(self.__class__.__name__, val_))
 
     def disable(self):
         # E/D bit to 0.
-        self.gpio.write(0, 0xf)
+        self.gpio.write(0, 0xF)
+
 
 class RFQickSoc(QickSoc):
     """
     Overrides the __init__ method of QickSoc in order to add the drivers for the preproduction (V1) version of the RF board.
     Otherwise supports all the QickSoc functionality.
     """
+
     def __init__(self, bitfile, clk_output=True, no_tproc=False, **kwargs):
         """
         A bitfile must always be provided, since the default bitstream will not work with the RF board.
         By default, re-initialize the clocks every time.
         This ensures that the LO output to the RF board is enabled.
         """
-        super().__init__(bitfile=bitfile, clk_output=clk_output, no_tproc=no_tproc, **kwargs)
+        super().__init__(
+            bitfile=bitfile, clk_output=clk_output, no_tproc=no_tproc, **kwargs
+        )
 
         # Add configuration dictionary.
-        self['rfboard'] = {}
+        self["rfboard"] = {}
 
         self.rfb_config(no_tproc)
 
@@ -1996,15 +2192,17 @@ class RFQickSoc(QickSoc):
         # Initialize everything with power off.
         self.switches = SwitchControl(self.psf_spi)
         # ADC power
-        self.switches.add_MCP(ch_en=0,
-                outputs=[("RF2IF5V_EN"+str(i), 0) for i in range(4)] 
-                + [None]*4)
+        self.switches.add_MCP(
+            ch_en=0, outputs=[("RF2IF5V_EN" + str(i), 0) for i in range(4)] + [None] * 4
+        )
         # DAC power
-        self.switches.add_MCP(ch_en=1,
-                outputs=[("IF2RF5V_EN"+str(i), 0) for i in range(8)])
+        self.switches.add_MCP(
+            ch_en=1, outputs=[("IF2RF5V_EN" + str(i), 0) for i in range(8)]
+        )
         # DAC RF/DC switch
-        self.switches.add_MCP(ch_en=2,
-                outputs=[("CH%d_PE42020_CTL"%(i), 1) for i in range(8)])
+        self.switches.add_MCP(
+            ch_en=2, outputs=[("CH%d_PE42020_CTL" % (i), 1) for i in range(8)]
+        )
 
         # LO Synthesizers.
         self.lo = [lo_synth(self.lo_spi, le=[i]) for i in range(2)]
@@ -2013,19 +2211,25 @@ class RFQickSoc(QickSoc):
         self.dac_bias = [dac_bias(self.dac_bias_spi, ch_en=ii) for ii in range(8)]
 
         # ADC channels.
-        self.adc_chains = [adc_rf_ch(ii, self.switches, self.attn_spi) for ii in range(4)] + [adc_dc_ch(ii, self.switches, self.psf_spi, version=1) for ii in range(4,8)]
-        
+        self.adc_chains = [
+            adc_rf_ch(ii, self.switches, self.attn_spi) for ii in range(4)
+        ] + [
+            adc_dc_ch(ii, self.switches, self.psf_spi, version=1) for ii in range(4, 8)
+        ]
+
         # DAC channels.
-        self.dac_chains = [dac_ch(ii, self.switches, self.attn_spi, version=1) for ii in range(8)]
+        self.dac_chains = [
+            dac_ch(ii, self.switches, self.attn_spi, version=1) for ii in range(8)
+        ]
 
         if not no_tproc:
             # Link gens/readouts to the corresponding RF board channels.
             for gen in self.gens:
                 tile, block = [int(a) for a in gen.dac]
-                gen.rfb = self.dacs[4*tile + block]
+                gen.rfb = self.dacs[4 * tile + block]
             for avg_buf in self.avg_bufs:
                 tile, block = [int(a) for a in avg_buf.readout.adc]
-                avg_buf.rfb = self.adc_chains[2*tile + block]
+                avg_buf.rfb = self.adc_chains[2 * tile + block]
 
     def rfb_set_lo(self, f):
         """Set both of the RF-board local oscillators to the same frequency.
@@ -2102,7 +2306,7 @@ class RFQickSoc(QickSoc):
         """
         self.dac_bias[bias_ch].set_volt(v)
 
-    def rfb_set_gen_filter(self, gen_ch, fc, bw=1, ftype='bandpass'):
+    def rfb_set_gen_filter(self, gen_ch, fc, bw=1, ftype="bandpass"):
         """Set the programmable Analog Filter of the chain.
 
         Parameters
@@ -2116,9 +2320,9 @@ class RFQickSoc(QickSoc):
         ftype : str
             Filter type: bypass, lowpass, highpass or bandpass.
         """
-        self.gens[gen_ch].rfb.set_filter(fc = fc, bw = bw, ftype = ftype)
+        self.gens[gen_ch].rfb.set_filter(fc=fc, bw=bw, ftype=ftype)
 
-    def rfb_set_ro_filter(self, ro_ch, fc, bw=1, ftype='bandpass'):
+    def rfb_set_ro_filter(self, ro_ch, fc, bw=1, ftype="bandpass"):
         """Enable and configure an RF-board RF input channel.
         Will fail if this is not an RF input.
 
@@ -2133,11 +2337,11 @@ class RFQickSoc(QickSoc):
         ftype : str
             Filter type: bypass, lowpass, highpass or bandpass.
         """
-        self.avg_bufs[ro_ch].rfb.set_filter(fc = fc, bw = bw, ftype = ftype)
+        self.avg_bufs[ro_ch].rfb.set_filter(fc=fc, bw=bw, ftype=ftype)
+
 
 class lo_synth_v2:
-    """
-    """
+    """ """
 
     def __init__(self, spi_ip, ch):
         # SPI.
@@ -2147,7 +2351,7 @@ class lo_synth_v2:
         self.ch_en = self.spi.en_level(3, [ch], "low")
         self.cs_t = ""
         # All CS to high value.
-        self.spi.SPI_SSR = 0xff
+        self.spi.SPI_SSR = 0xFF
 
         self.lmx = clock_models.LMX2594(122.88)
         self.reset()
@@ -2161,11 +2365,11 @@ class lo_synth_v2:
         self.reg_wr(0x000000)
 
     def reg_wr(self, regval):
-        data = regval.to_bytes(length=3, byteorder='big')
+        data = regval.to_bytes(length=3, byteorder="big")
         rec = self.spi.send_receive_m(data, self.ch_en, self.cs_t)
 
     def reg_rd(self, addr):
-        data = bytes([addr + (1<<7), 0, 0])
+        data = bytes([addr + (1 << 7), 0, 0])
         return self.spi.send_receive_m(data, self.ch_en, self.cs_t)
 
     def read_and_parse(self, addr):
@@ -2176,12 +2380,15 @@ class lo_synth_v2:
 
     def is_locked(self):
         status = self.get_param("rb_LD_VTUNE")
-        #print(status.value_description)
+        # print(status.value_description)
         return status.value == self.lmx.rb_LD_VTUNE.LOCKED.value
 
     def set_freq(self, f, pwr=50, osc_2x=False, reset=True, verbose=False):
-        self.lmx.set_output_frequency(f, pwr=pwr, en_b=True, osc_2x=osc_2x, verbose=verbose)
-        if reset: self.reset()
+        self.lmx.set_output_frequency(
+            f, pwr=pwr, en_b=True, osc_2x=osc_2x, verbose=verbose
+        )
+        if reset:
+            self.reset()
         self.program()
         time.sleep(0.01)
         self.calibrate(verbose=verbose)
@@ -2192,21 +2399,26 @@ class lo_synth_v2:
             # but datasheet doesn't say so, and this seems to work
             self.set_param("FCAL_EN", 1)
             starttime = time.time()
-            while time.time()-starttime < timeout:
+            while time.time() - starttime < timeout:
                 lock = self.is_locked()
                 if lock:
-                    if verbose: print("LO locked on attempt %d after %.2f sec"%(i+1, time.time()-starttime))
+                    if verbose:
+                        print(
+                            "LO locked on attempt %d after %.2f sec"
+                            % (i + 1, time.time() - starttime)
+                        )
                     return
                 time.sleep(0.01)
-            if verbose: print("lock attempt %d failed"%(i+1))
-        raise RuntimeError("LO failed to lock after %d attempts"%(n_attempts))
+            if verbose:
+                print("lock attempt %d failed" % (i + 1))
+        raise RuntimeError("LO failed to lock after %d attempts" % (n_attempts))
 
     def set_param(self, name, val):
         param = getattr(self.lmx, name)
         param.value = val
         if isinstance(param, clock_models.Field):
             self.reg_wr(self.lmx.registers_by_addr[param.addr].get_raw())
-        else: # MultiRegister
+        else:  # MultiRegister
             for field in param.fields:
                 self.reg_wr(self.lmx.registers_by_addr[field.addr].get_raw())
 
@@ -2217,6 +2429,7 @@ class lo_synth_v2:
     def program(self):
         for regval in self.lmx.get_register_dump():
             self.reg_wr(regval)
+
 
 class RFQickSocV2(RFQickSoc):
     def rfb_config(self, no_tproc):
@@ -2240,44 +2453,64 @@ class RFQickSocV2(RFQickSoc):
         # Initialize everything with power off.
         self.switches = SwitchControl(self.psf_spi)
         # ADC power/power-down
-        self.switches.add_MCP(ch_en=0, dev_addr=0,
-                outputs=[("RF2IF5V_EN"+str(i), 0) for i in range(4)]
-                + [("RF2IF_PD"+str(i), 1) for i in range(4, 8)])
+        self.switches.add_MCP(
+            ch_en=0,
+            dev_addr=0,
+            outputs=[("RF2IF5V_EN" + str(i), 0) for i in range(4)]
+            + [("RF2IF_PD" + str(i), 1) for i in range(4, 8)],
+        )
         # DAC power-down
-        self.switches.add_MCP(ch_en=1, dev_addr=1,
-                outputs=[("IF2RF_PD"+str(i), 1) for i in range(8)])
+        self.switches.add_MCP(
+            ch_en=1, dev_addr=1, outputs=[("IF2RF_PD" + str(i), 1) for i in range(8)]
+        )
         # DAC power
-        self.switches.add_MCP(ch_en=1, dev_addr=0,
-                outputs=[("IF2RF5V_EN"+str(i), 0) for i in range(8)])
+        self.switches.add_MCP(
+            ch_en=1, dev_addr=0, outputs=[("IF2RF5V_EN" + str(i), 0) for i in range(8)]
+        )
         # DAC RF/DC switch
-        self.switches.add_MCP(ch_en=2, dev_addr=0,
-                outputs=[("CH%d_PE42020_CTL"%(i), 1) for i in range(8)])
+        self.switches.add_MCP(
+            ch_en=2,
+            dev_addr=0,
+            outputs=[("CH%d_PE42020_CTL" % (i), 1) for i in range(8)],
+        )
 
         # LO Synthesizers.
         self.lo = [lo_synth_v2(self.lo_spi, i) for i in range(3)]
 
         # DAC BIAS.
-        self.dac_bias = [dac_bias(self.dac_bias_spi, ch_en=ii, fpga_board=self['board']) for ii in range(8)]
+        self.dac_bias = [
+            dac_bias(self.dac_bias_spi, ch_en=ii, fpga_board=self["board"])
+            for ii in range(8)
+        ]
 
         # ADC channels.
-        self.adc_chains = [adc_rf_ch(ii, self.switches, self.attn_spi, fpga_board=self['board']) for ii in range(4)] + [adc_dc_ch(ii, self.switches, self.psf_spi) for ii in range(4,8)]
+        self.adc_chains = [
+            adc_rf_ch(ii, self.switches, self.attn_spi, fpga_board=self["board"])
+            for ii in range(4)
+        ] + [adc_dc_ch(ii, self.switches, self.psf_spi) for ii in range(4, 8)]
 
         # DAC channels.
-        self.dac_chains = [dac_ch(ii, self.switches, self.attn_spi, fpga_board=self['board']) for ii in range(8)]
+        self.dac_chains = [
+            dac_ch(ii, self.switches, self.attn_spi, fpga_board=self["board"])
+            for ii in range(8)
+        ]
 
         # Link RF channels to LOs.
-        for adc in self.adc_chains[:4]: adc.lo = self.lo[0]
-        for dac in self.dac_chains[:4]: dac.lo = self.lo[1]
-        for dac in self.dac_chains[4:]: dac.lo = self.lo[2]
+        for adc in self.adc_chains[:4]:
+            adc.lo = self.lo[0]
+        for dac in self.dac_chains[:4]:
+            dac.lo = self.lo[1]
+        for dac in self.dac_chains[4:]:
+            dac.lo = self.lo[2]
 
         if not no_tproc:
             # Link gens/readouts to the corresponding RF board channels.
             for gen in self.gens:
                 tile, block = [int(a) for a in gen.dac]
-                gen.rfb = self.dac_chains[4*tile + block]
+                gen.rfb = self.dac_chains[4 * tile + block]
             for avg_buf in self.avg_bufs:
                 tile, block = [int(a) for a in avg_buf.readout.adc]
-                avg_buf.rfb = self.adc_chains[2*tile + block]
+                avg_buf.rfb = self.adc_chains[2 * tile + block]
 
     def rfb_set_lo(self, f, ch=None, verbose=False):
         """Set RF-board local oscillators.
@@ -2319,15 +2552,15 @@ class RFQickSocV2(RFQickSoc):
             return self.avg_bufs[ro_ch].rfb.lo.freq
         raise RuntimeError("must specify gen_ch or ro_ch")
 
-class RFQickSoc216V1(RFQickSoc):
 
+class RFQickSoc216V1(RFQickSoc):
     def rfb_config(self, no_tproc):
         """
         Configure the GPIO/SPI interfaces to the RF board.
         """
 
         # GPIO for Board Selection.
-        if hasattr(self, 'rfb_control'):
+        if hasattr(self, "rfb_control"):
             self.board_sel = BoardSelection(self.rfb_control.brd_sel_gpio)
             self.attn_spi = self.rfb_control.attn_spi
             self.filter_spi = self.rfb_control.filter_spi
@@ -2346,31 +2579,59 @@ class RFQickSoc216V1(RFQickSoc):
         self.bias_spi.config(lsb="msb", cpha="invert")
 
         # DAC BIAS.
-        self.dac_bias = [dac_bias(self.bias_spi, ch_en=ii, gpio_ip=self.bias_gpio, version=1, fpga_board=self['board']) for ii in range(8)]
+        self.dac_bias = [
+            dac_bias(
+                self.bias_spi,
+                ch_en=ii,
+                gpio_ip=self.bias_gpio,
+                version=1,
+                fpga_board=self["board"],
+            )
+            for ii in range(8)
+        ]
 
         # ADC channels. ADC's daughter cards are the upper 4.
         self.adc_chains = []
-        NRF = 4 # Number of ADC daughter cards.
-        NCH = 2 # ADC channels per daughter card.
+        NRF = 4  # Number of ADC daughter cards.
+        NCH = 2  # ADC channels per daughter card.
         for rf_board in range(NRF):
             for ch in range(NCH):
-                self.adc_chains.append(adc_rf_ch(ch=NCH*rf_board+ch, attn_spi=self.attn_spi, filter_spi=self.filter_spi, version=1, fpga_board=self['board'], rfboard_ch=NRF+rf_board, rfboard_sel=self.board_sel))
+                self.adc_chains.append(
+                    adc_rf_ch(
+                        ch=NCH * rf_board + ch,
+                        attn_spi=self.attn_spi,
+                        filter_spi=self.filter_spi,
+                        version=1,
+                        fpga_board=self["board"],
+                        rfboard_ch=NRF + rf_board,
+                        rfboard_sel=self.board_sel,
+                    )
+                )
 
         # DAC channels. DAC's daughter cards are the lower 4.
         self.dac_chains = []
-        NRF = 4 # Number of DAC daughter cards.
-        NCH = 4 # DAC channels per daughter card.
+        NRF = 4  # Number of DAC daughter cards.
+        NCH = 4  # DAC channels per daughter card.
         for rf_board in range(NRF):
             for ch in range(NCH):
-                self.dac_chains.append(dac_ch(ch=NCH*rf_board+ch, attn_spi=self.attn_spi, filter_spi=self.filter_spi, version=1, fpga_board=self['board'], rfboard_ch=rf_board, rfboard_sel=self.board_sel))
+                self.dac_chains.append(
+                    dac_ch(
+                        ch=NCH * rf_board + ch,
+                        attn_spi=self.attn_spi,
+                        filter_spi=self.filter_spi,
+                        version=1,
+                        fpga_board=self["board"],
+                        rfboard_ch=rf_board,
+                        rfboard_sel=self.board_sel,
+                    )
+                )
 
         # Link gens/readouts to the corresponding RF board channels.
         if not no_tproc:
             for gen in self.gens:
                 tile, block = [int(a) for a in gen.dac]
-                gen.rfb = self.dac_chains[4*tile + block]
+                gen.rfb = self.dac_chains[4 * tile + block]
             for avg_buf in self.avg_bufs:
                 tile, block = [int(a) for a in avg_buf.readout.adc]
-                #TODO: is tile-1 correct? not tile-2?
-                avg_buf.rfb = self.adc_chains[4*(tile-1) + block]
-
+                # TODO: is tile-1 correct? not tile-2?
+                avg_buf.rfb = self.adc_chains[4 * (tile - 1) + block]

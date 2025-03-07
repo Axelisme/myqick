@@ -12,9 +12,8 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict, defaultdict
 
 import numpy as np
-from tqdm.auto import tqdm
-
 from qick import get_version, obtain
+from tqdm.auto import tqdm
 
 from .helpers import (
     DRAG,

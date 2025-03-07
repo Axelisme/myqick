@@ -2,16 +2,17 @@
 Assembly language wrapper class and auxiliary functions for the v1 tProcessor.
 """
 
-import logging
-import numpy as np
 import json
-from collections import namedtuple, OrderedDict, defaultdict
-from typing import Union, List
+import logging
 from abc import ABC, abstractmethod
+from collections import OrderedDict, defaultdict, namedtuple
+from typing import List, Union
 
-from .qick_asm import AbsQickProgram, AcquireMixin
+import numpy as np
+
 from .helpers import ch2list, check_keys
 from .parser import parse_prog
+from .qick_asm import AbsQickProgram, AcquireMixin
 
 RegisterType = ["freq", "time", "phase", "adc_freq"]
 DefaultUnits = {"freq": "MHz", "time": "us", "phase": "deg", "adc_freq": "MHz"}
@@ -167,7 +168,7 @@ class ReadoutManager(AbsRegisterManager):
             self.set_reg(
                 "mode",
                 mc,
-                f"mode | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                f"mode | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
             )
             self.next_pulse["regs"].append(
                 [self.regmap[(self.ch, x)][1] for x in ["freq", "0", "mode", "0", "0"]]
@@ -389,7 +390,7 @@ class FullSpeedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"phrst| stdysel | mode | | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"phrst| stdysel | mode | | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 self.next_pulse["regs"].append(
                     [
@@ -409,7 +410,7 @@ class FullSpeedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"phrst| stdysel | mode | | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"phrst| stdysel | mode | | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 self.next_pulse["regs"].append(
                     [
@@ -434,7 +435,7 @@ class FullSpeedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode2",
                     mc,
-                    f"phrst| stdysel | mode | | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"phrst| stdysel | mode | | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 # mode for flat segment
                 mc = self.get_mode_code(
@@ -447,7 +448,7 @@ class FullSpeedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"phrst| stdysel | mode | | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"phrst| stdysel | mode | | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 # mode for ramp down
                 mc = self.get_mode_code(
@@ -460,7 +461,7 @@ class FullSpeedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode3",
                     mc,
-                    f"phrst| stdysel | mode | | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"phrst| stdysel | mode | | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
 
                 self.next_pulse["regs"].append(
@@ -584,7 +585,7 @@ class InterpolatedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"stdysel | mode | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"stdysel | mode | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 self.next_pulse["regs"].append(
                     [
@@ -604,7 +605,7 @@ class InterpolatedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"stdysel | mode | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"stdysel | mode | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 self.next_pulse["regs"].append(
                     [
@@ -627,7 +628,7 @@ class InterpolatedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode",
                     mc,
-                    f"stdysel | mode | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"stdysel | mode | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
                 # mode for ramps
                 mc = self.get_mode_code(
@@ -640,7 +641,7 @@ class InterpolatedGenManager(AbsGenManager):
                 self.set_reg(
                     "mode2",
                     mc,
-                    f"stdysel | mode | outsel = 0b{mc//2**16:>05b} | length = {mc % 2**16} ",
+                    f"stdysel | mode | outsel = 0b{mc // 2**16:>05b} | length = {mc % 2**16} ",
                 )
 
                 # gain+addr for ramp-up

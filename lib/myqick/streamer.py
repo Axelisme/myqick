@@ -1,8 +1,9 @@
-from threading import Thread, Event
-from queue import Queue
 import time
-import numpy as np
 import traceback
+from queue import Queue
+from threading import Event, Thread
+
+import numpy as np
 
 # This code originally used Process not Thread.
 # Process is much slower to start (Process.start() is ~100 ms, Thread.start() is a few ms)
@@ -13,9 +14,10 @@ import traceback
 # So we think it's safe to use threads.
 # However, this is a complicated problem and we may ultimately need to mess around with sys.setswitchinterval() or go back to Process.
 # To use Process instead of Thread, use the following import and change WORKERTYPE.
-#from multiprocessing import Process, Queue, Event
+# from multiprocessing import Process, Queue, Event
 
-class DataStreamer():
+
+class DataStreamer:
     """
     Uses a separate thread to read data from the average buffers.
     The class methods define the readout loop and initialization of the worker thread.
@@ -27,7 +29,7 @@ class DataStreamer():
     :type soc: QickSoc
     """
 
-    #WORKERTYPE = Process
+    # WORKERTYPE = Process
     WORKERTYPE = Thread
 
     def __init__(self, soc):
@@ -96,15 +98,19 @@ class DataStreamer():
         while True:
             try:
                 # wait for a job
-                total_shots, counter_addr, ch_list, reads_per_count, stride = self.job_queue.get(block=True)
-                #print("streamer loop: start", total_count)
+                total_shots, counter_addr, ch_list, reads_per_count, stride = (
+                    self.job_queue.get(block=True)
+                )
+                # print("streamer loop: start", total_count)
 
                 shots = 0
                 last_shots = 0
 
                 # how many shots worth of data to transfer at a time
                 if stride is None:
-                    stride = int(0.1 * self.soc.get_avg_max_length(0)/max(reads_per_count))
+                    stride = int(
+                        0.1 * self.soc.get_avg_max_length(0) / max(reads_per_count)
+                    )
                 # bigger stride is more efficient, but the transfer size must never exceed AVG_MAX_LENGTH, so the stride should be set with some safety margin
 
                 # make sure count variable is reset to 0 before starting processor
@@ -124,29 +130,37 @@ class DataStreamer():
                         break
                     shots = self.soc.get_tproc_counter(addr=counter_addr)
                     # wait until either you've gotten a full stride of measurements or you've finished (so you don't go crazy trying to download every measurement)
-                    if shots >= min(last_shots+stride, total_shots):
-                        newshots = shots-last_shots
+                    if shots >= min(last_shots + stride, total_shots):
+                        newshots = shots - last_shots
                         # buffer for each channel
                         acc_buf = [None for nreads in reads_per_count]
 
                         # for each adc channel get the single shot data and add it to the buffer
                         for iCh, ch in enumerate(ch_list):
-                            newpoints = newshots*reads_per_count[iCh]
+                            newpoints = newshots * reads_per_count[iCh]
                             if newpoints >= self.soc.get_avg_max_length(ch):
-                                raise RuntimeError("Overflowed the averages buffer (%d unread samples >= buffer size %d)."
-                                                   % (newpoints, self.soc.get_avg_max_length(ch)) +
-                                                   "\nYou need to slow down the tProc by increasing relax_delay." +
-                                                   "\nIf the TQDM progress bar is enabled, disabling it may help.")
+                                raise RuntimeError(
+                                    "Overflowed the averages buffer (%d unread samples >= buffer size %d)."
+                                    % (newpoints, self.soc.get_avg_max_length(ch))
+                                    + "\nYou need to slow down the tProc by increasing relax_delay."
+                                    + "\nIf the TQDM progress bar is enabled, disabling it may help."
+                                )
 
-                            addr = last_shots * reads_per_count[iCh] % self.soc.get_avg_max_length(ch)
-                            data = self.soc.get_accumulated(ch=ch, address=addr, length=newpoints)
+                            addr = (
+                                last_shots
+                                * reads_per_count[iCh]
+                                % self.soc.get_avg_max_length(ch)
+                            )
+                            data = self.soc.get_accumulated(
+                                ch=ch, address=addr, length=newpoints
+                            )
                             acc_buf[iCh] = data
 
                         last_shots += newshots
 
-                        stats = (time.time()-t_start, shots, addr, newshots)
+                        stats = (time.time() - t_start, shots, addr, newshots)
                         self.data_queue.put((newshots, (acc_buf, stats)))
-                #if last_count==total_count: print("streamer loop: normal completion")
+                # if last_count==total_count: print("streamer loop: normal completion")
 
             except Exception as e:
                 print("streamer loop: got exception")

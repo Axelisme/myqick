@@ -2094,12 +2094,11 @@ class AcquireMixin:
                 for ii, d in enumerate(round_d):
                     sum_d[ii] += d
 
-            if ret_std:
-                if sum2_d is None:
-                    sum2_d = [d**2 + s**2 for d, s in zip(round_d, round_std)]
-                else:
-                    for ii, (d, s) in enumerate(zip(round_d, round_std)):
-                        sum2_d[ii] += d**2 + s**2
+            if sum2_d is None:
+                sum2_d = [d**2 + s**2 for d, s in zip(round_d, round_std)]
+            else:
+                for ii, (d, s) in enumerate(zip(round_d, round_std)):
+                    sum2_d[ii] += d**2 + s**2
 
             # early stop
             if self.early_stop:
@@ -2108,18 +2107,13 @@ class AcquireMixin:
 
             # callback
             if callback is not None:
-                if ret_std:
-                    callback(ir, sum_d, sum2_d)
-                callback(ir, sum_d)
+                callback(ir, sum_d, sum2_d)
 
         # divide total by rounds
         avg_d = [d / soft_avgs for d in sum_d]
+        std_d = [np.sqrt(x2 / soft_avgs - u**2) for x2, u in zip(sum2_d, avg_d)]
 
-        if ret_std:
-            std_d = [np.sqrt(x2 / soft_avgs - u**2) for x2, u in zip(sum2_d, avg_d)]
-            return avg_d, std_d
-        else:
-            return avg_d
+        return avg_d, std_d if ret_std else avg_d
 
     def _ro_offset(self, ch, chcfg):
         """Computes the IQ offset expected from this readout.

@@ -2060,21 +2060,13 @@ class AcquireMixin:
             # if we're thresholding, apply the threshold before averaging
             if threshold is None:
                 d_reps = self.acc_buf
-                if ret_std:
-                    round_d, round_std = self._average_buf(
-                        d_reps,
-                        self.reads_per_shot,
-                        length_norm=True,
-                        remove_offset=remove_offset,
-                        ret_std=True,
-                    )
-                else:
-                    round_d = self._average_buf(
-                        d_reps,
-                        self.reads_per_shot,
-                        length_norm=True,
-                        remove_offset=remove_offset,
-                    )
+                round_d, round_std = self._average_buf(
+                    d_reps,
+                    self.reads_per_shot,
+                    length_norm=True,
+                    remove_offset=remove_offset,
+                    ret_std=True,
+                )
             else:
                 assert not ret_std, "ret_std is not supported with thresholding"
                 d_reps = [np.zeros_like(d) for d in self.acc_buf]
@@ -2083,8 +2075,8 @@ class AcquireMixin:
                 )
                 for i, ch_shot in enumerate(self.shots):
                     d_reps[i][..., 0] = ch_shot
-                round_d = self._average_buf(
-                    d_reps, self.reads_per_shot, length_norm=False
+                round_d, round_std = self._average_buf(
+                    d_reps, self.reads_per_shot, length_norm=False, ret_std=True
                 )
 
             # sum over rounds axis
@@ -2163,27 +2155,21 @@ class AcquireMixin:
         :return: averaged iq data after each round.
         """
         avg_d = []
-        if ret_std:
-            std_d = []
+        std_d = []
         for i_ch, (ch, ro) in enumerate(self.ro_chs.items()):
             # average over the avg_level
             avg = d_reps[i_ch].sum(axis=self.avg_level) / self.loop_dims[self.avg_level]
-            if ret_std:
-                std = d_reps[i_ch].std(axis=self.avg_level)
+            std = d_reps[i_ch].std(axis=self.avg_level)
             if length_norm and not ro["edge_counting"]:
                 avg /= ro["length"]
-                if ret_std:
-                    std /= ro["length"]
+                std /= ro["length"]
                 if remove_offset:
                     avg -= self._ro_offset(ch, ro.get("ro_config"))
             # the reads_per_shot axis should be the first one
             avg_d.append(np.moveaxis(avg, -2, 0))
-            if ret_std:
-                std_d.append(np.moveaxis(std, -2, 0))
+            std_d.append(np.moveaxis(std, -2, 0))
 
-        if ret_std:
-            return avg_d, std_d
-        return avg_d
+        return avg_d, std_d if ret_std else avg_d
 
     def _apply_threshold(self, acc_buf, threshold, angle, remove_offset):
         """

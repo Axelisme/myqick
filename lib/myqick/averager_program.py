@@ -79,12 +79,7 @@ class AveragerProgram(AcquireProgram):
         p.end()
 
     def acquire(
-        self,
-        soc,
-        readouts_per_experiment=None,
-        save_experiments=None,
-        ret_std=False,
-        **kwargs,
+        self, soc, readouts_per_experiment=None, save_experiments=None, **kwargs
     ):
         """
         This method optionally loads pulses on to the SoC, configures the ADC readouts, loads the machine code representation of the AveragerProgram onto the SoC, starts the program and streams the data into the Python, returning it as a set of numpy arrays.
@@ -115,16 +110,7 @@ class AveragerProgram(AcquireProgram):
         if readouts_per_experiment is not None:
             self.set_reads_per_shot(readouts_per_experiment)
 
-        data = super().acquire(
-            soc,
-            soft_avgs=self.soft_avgs,
-            ret_std=ret_std,
-            **kwargs,
-        )
-        if ret_std:
-            avg_d, std_d = data
-        else:
-            avg_d = data
+        avg_d, std_d = super().acquire(soc, soft_avgs=self.soft_avgs, **kwargs)
 
         # reformat the data into separate I and Q arrays
         # save results to class in case you want to look at it later or for analysis
@@ -133,24 +119,26 @@ class AveragerProgram(AcquireProgram):
         self.dq_buf = [d[:, 1] for d in raw]
 
         n_ro = len(self.ro_chs)
+        std_di, std_dq = None, None
         if save_experiments is None:
             avg_di = [d[:, 0] for d in avg_d]
             avg_dq = [d[:, 1] for d in avg_d]
-            if ret_std:
-                std_di = [d[:, 0] for d in std_d]
-                std_dq = [d[:, 1] for d in std_d]
+            std_di = [d[:, 0] for d in std_d]
+            std_dq = [d[:, 1] for d in std_d]
+
         else:
-            assert ret_std is False, "save_experiments not supported with ret_std"
             avg_di = [np.zeros(len(save_experiments)) for ro in self.ro_chs]
             avg_dq = [np.zeros(len(save_experiments)) for ro in self.ro_chs]
+            std_di = [np.zeros(len(save_experiments)) for ro in self.ro_chs]
+            std_dq = [np.zeros(len(save_experiments)) for ro in self.ro_chs]
             for i_ch in range(n_ro):
                 for nn, ii in enumerate(save_experiments):
                     avg_di[i_ch][nn] = avg_d[i_ch][ii, 0]
                     avg_dq[i_ch][nn] = avg_d[i_ch][ii, 1]
+                    std_di[i_ch][nn] = std_d[i_ch][ii, 0]
+                    std_dq[i_ch][nn] = std_d[i_ch][ii, 1]
 
-        if ret_std:
-            return avg_di, avg_dq, std_di, std_dq
-        return avg_di, avg_dq
+        return avg_di, avg_dq, std_di, std_dq
 
     def acquire_decimated(self, soc, readouts_per_experiment=None, **kwargs):
         """

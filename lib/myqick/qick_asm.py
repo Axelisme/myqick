@@ -1935,7 +1935,6 @@ class AcquireMixin:
         angle=None,
         progress=True,
         remove_offset=True,
-        ret_std=False,
         callback=None,
     ):
         """Acquire data using the accumulated readout.
@@ -2029,13 +2028,13 @@ class AcquireMixin:
                 )
                 while count < total_count and not self.early_stop:
                     new_data = obtain(soc.poll_data())
-                    for new_points, (d, s) in new_data:
+                    for new_points, (u, o) in new_data:
                         for ii, nreads in enumerate(self.reads_per_shot):
                             # print(count, new_points, nreads, d[ii].shape, total_count)
-                            if new_points * nreads != d[ii].shape[0]:
+                            if new_points * nreads != u[ii].shape[0]:
                                 logger.error(
                                     "data size mismatch: new_points=%d, nreads=%d, data shape %s"
-                                    % (new_points, nreads, d[ii].shape)
+                                    % (new_points, nreads, u[ii].shape)
                                 )
                             if count + new_points > total_count:
                                 logger.error(
@@ -2048,13 +2047,13 @@ class AcquireMixin:
                             c_end = (count + new_points) * nreads
                             buf1d = self.acc_buf[ii].reshape((-1, 2))
                             try:
-                                buf1d[c_start:c_end] = d[ii]
+                                buf1d[c_start:c_end] = u[ii]
                             except Exception as e:
                                 print(e)
                                 num = buf1d[c_start:c_end].shape[0]
-                                buf1d[c_start:c_end] = d[ii][:num]
+                                buf1d[c_start:c_end] = u[ii][:num]
                         count += new_points
-                        self.stats.append(s)
+                        self.stats.append(o)
                         pbar.update(new_points)
 
             # if we're thresholding, apply the threshold before averaging
@@ -2065,10 +2064,8 @@ class AcquireMixin:
                     self.reads_per_shot,
                     length_norm=True,
                     remove_offset=remove_offset,
-                    ret_std=True,
                 )
             else:
-                assert not ret_std, "ret_std is not supported with thresholding"
                 d_reps = [np.zeros_like(d) for d in self.acc_buf]
                 self.shots = self._apply_threshold(
                     self.acc_buf, threshold, angle, remove_offset=remove_offset
@@ -2076,21 +2073,21 @@ class AcquireMixin:
                 for i, ch_shot in enumerate(self.shots):
                     d_reps[i][..., 0] = ch_shot
                 round_d, round_std = self._average_buf(
-                    d_reps, self.reads_per_shot, length_norm=False, ret_std=True
+                    d_reps, self.reads_per_shot, length_norm=False
                 )
 
             # sum over rounds axis
             if sum_d is None:
                 sum_d = round_d
             else:
-                for ii, d in enumerate(round_d):
-                    sum_d[ii] += d
+                for ii, u in enumerate(round_d):
+                    sum_d[ii] += u
 
             if sum2_d is None:
-                sum2_d = [d**2 + s**2 for d, s in zip(round_d, round_std)]
+                sum2_d = [u**2 + o**2 for u, o in zip(round_d, round_std)]
             else:
-                for ii, (d, s) in enumerate(zip(round_d, round_std)):
-                    sum2_d[ii] += d**2 + s**2
+                for ii, (u, o) in enumerate(zip(round_d, round_std)):
+                    sum2_d[ii] += u**2 + o**2
 
             # early stop
             if self.early_stop:
@@ -2102,10 +2099,10 @@ class AcquireMixin:
                 callback(ir, sum_d, sum2_d)
 
         # divide total by rounds
-        avg_d = [d / soft_avgs for d in sum_d]
-        std_d = [np.sqrt(x2 / soft_avgs - u**2) for x2, u in zip(sum2_d, avg_d)]
+        avg_d = [s / soft_avgs for s in sum_d]
+        std_d = [np.sqrt(s2 / soft_avgs - u**2) for s2, u in zip(sum2_d, avg_d)]
 
-        return (avg_d, std_d) if ret_std else avg_d
+        return avg_d, std_d
 
     def _ro_offset(self, ch, chcfg):
         """Computes the IQ offset expected from this readout.
@@ -2142,7 +2139,6 @@ class AcquireMixin:
         reads_per_shot: list,
         length_norm: bool = True,
         remove_offset: bool = True,
-        ret_std: bool = False,
     ) -> np.ndarray:
         """
         calculate averaged data in a data acquire round. This function should be overwritten in the child qick program
@@ -2169,7 +2165,7 @@ class AcquireMixin:
             avg_d.append(np.moveaxis(avg, -2, 0))
             std_d.append(np.moveaxis(std, -2, 0))
 
-        return avg_d, std_d if ret_std else avg_d
+        return avg_d, std_d
 
     def _apply_threshold(self, acc_buf, threshold, angle, remove_offset):
         """

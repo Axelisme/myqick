@@ -2105,7 +2105,7 @@ class AcquireMixin:
         avg_d = [d / soft_avgs for d in sum_d]
         std_d = [np.sqrt(x2 / soft_avgs - u**2) for x2, u in zip(sum2_d, avg_d)]
 
-        return avg_d, std_d if ret_std else avg_d
+        return (avg_d, std_d) if ret_std else avg_d
 
     def _ro_offset(self, ch, chcfg):
         """Computes the IQ offset expected from this readout.

@@ -1,3 +1,4 @@
+import os
 import time
 import traceback
 from queue import Queue
@@ -95,6 +96,9 @@ class DataStreamer:
         :param reads_per_count: Number of data points to expect per counter increment
         :type reads_per_count: list of int
         """
+        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(99))
+        os.sched_setaffinity(0, {3})
+
         while True:
             try:
                 # wait for a job

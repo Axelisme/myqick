@@ -3000,7 +3000,7 @@ class RecordTime(Macro):
 
 
 class WithFixedLength:
-    def __init__(self, prog: AsmV2, length: float):
+    def __init__(self, prog: AsmV2, length: float = None):
         self.prog = prog
         self.length = length
         self.start_t = 0.0
@@ -3012,7 +3012,8 @@ class WithFixedLength:
         self.prog.append_macro(RecordTime(self.set_start_time))
 
     def __exit__(self, exec_type, exec_value, exec_tb):
-        self.prog.delay(t=self.start_t + self.length)
+        if self.length is not None:
+            self.prog.delay(t=self.start_t + self.length)
 
 
 # ----------------------------------------

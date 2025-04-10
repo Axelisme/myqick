@@ -2999,7 +2999,7 @@ class RecordTime(Macro):
         return []
 
 
-class WithFixedLength:
+class WithMinLength:
     def __init__(self, prog: AsmV2, length: float = None):
         self.prog = prog
         self.length = length

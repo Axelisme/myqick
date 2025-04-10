@@ -2984,3 +2984,35 @@ class AveragerProgramV2(AcquireProgramV2):
             self.label(name)
             self.extend_macros(asm)
             self.ret()
+
+
+# Axelisme patch
+# ----------------------------------------
+class RecordTime(Macro):
+    def __init__(self, register_fn: Callable) -> None:
+        self.register_fn = register_fn
+
+    def preprocess(self, prog):
+        self.register_fn(prog.get_max_timestamp(gens=True, ros=False))
+
+    def expand(self, prog):
+        return []
+
+
+class WithFixedLength:
+    def __init__(self, prog: AsmV2, length: float):
+        self.prog = prog
+        self.length = length
+        self.start_t = 0.0
+
+    def set_start_time(self, t):
+        self.start_t = t
+
+    def __enter__(self):
+        self.prog.append_macro(RecordTime(self.set_start_time))
+
+    def __exit__(self, exec_type, exec_value, exec_tb):
+        self.prog.delay(t=self.start_t + self.length)
+
+
+# ----------------------------------------

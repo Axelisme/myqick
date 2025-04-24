@@ -2,17 +2,16 @@
 Assembly language wrapper class and auxiliary functions for the v1 tProcessor.
 """
 
-import json
 import logging
-from abc import ABC, abstractmethod
-from collections import OrderedDict, defaultdict, namedtuple
-from typing import List, Union
-
 import numpy as np
+import json
+from collections import namedtuple, OrderedDict, defaultdict
+from typing import Union, List
+from abc import ABC, abstractmethod
 
+from .qick_asm import AbsQickProgram, AcquireMixin
 from .helpers import ch2list, check_keys
 from .parser import parse_prog
-from .qick_asm import AbsQickProgram, AcquireMixin
 
 RegisterType = ["freq", "time", "phase", "adc_freq"]
 DefaultUnits = {"freq": "MHz", "time": "us", "phase": "deg", "adc_freq": "MHz"}

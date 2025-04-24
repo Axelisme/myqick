@@ -9,12 +9,12 @@ import json
 import logging
 import operator
 from abc import ABC, abstractmethod
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, namedtuple
+from contextlib import suppress
 
 import numpy as np
+from qick import get_version, obtain
 from tqdm.auto import tqdm
-
-from myqick import get_version, obtain
 
 from .helpers import (
     DRAG,
@@ -128,7 +128,10 @@ class QickConfig:
             description
 
         """
-        tproc = self["tprocs"][0]
+        try:
+            tproc = self["tprocs"][0]
+        except KeyError:
+            tproc = {}
 
         lines = []
         lines.append(
@@ -139,93 +142,103 @@ class QickConfig:
         if "refclk_freq" in self._cfg:
             lines.append(
                 "\n\tGlobal clocks (MHz): tProcessor %.3f, RF reference %.3f"
-                % (tproc["f_time"], self["refclk_freq"])
+                % (tproc.get("f_time", 0), self["refclk_freq"])
             )
 
-        lines.append("\n\t%d signal generator channels:" % (len(self["gens"])))
-        for iGen, gen in enumerate(self["gens"]):
-            dacname = gen["dac"]
-            dac = self["dacs"][dacname]
-            buflen = gen["maxlen"] / (gen["samps_per_clk"] * gen["f_fabric"])
-            lines.append(
-                "\t%d:\t%s - envelope memory %d samples (%.3f us)"
-                % (iGen, gen["type"], gen["maxlen"], buflen)
-            )
-            lines.append(
-                "\t\tfs=%.3f MHz, fabric=%.3f MHz, %d-bit DDS, range=%.3f MHz"
-                % (dac["fs"], gen["f_fabric"], gen["b_dds"], gen["f_dds"])
-            )
-            lines.append("\t\t" + self._describe_dac(dacname))
-
-        if self["iqs"]:
-            lines.append("\n\t%d constant-IQ outputs:" % (len(self["iqs"])))
-            for iIQ, iq in enumerate(self["iqs"]):
-                dacname = iq["dac"]
+        with suppress(KeyError):  # self['gens'] may not exist
+            lines.append("\n\t%d signal generator channels:" % (len(self["gens"])))
+            for iGen, gen in enumerate(self["gens"]):
+                dacname = gen["dac"]
                 dac = self["dacs"][dacname]
-                lines.append("\t%d:\tfs=%.3f MHz" % (iIQ, iq["fs"]))
+                buflen = gen["maxlen"] / (gen["samps_per_clk"] * gen["f_fabric"])
+                lines.append(
+                    "\t%d:\t%s - envelope memory %d samples (%.3f us)"
+                    % (iGen, gen["type"], gen["maxlen"], buflen)
+                )
+                lines.append(
+                    "\t\tfs=%.3f MHz, fabric=%.3f MHz, %d-bit DDS, range=%.3f MHz"
+                    % (dac["fs"], gen["f_fabric"], gen["b_dds"], gen["f_dds"])
+                )
                 lines.append("\t\t" + self._describe_dac(dacname))
 
-        lines.append("\n\t%d readout channels:" % (len(self["readouts"])))
-        for iReadout, readout in enumerate(self["readouts"]):
-            adcname = readout["adc"]
-            adc = self["adcs"][adcname]
-            buflen = readout["buf_maxlen"] / readout["f_output"]
-            if "tproc_ctrl" in readout:
+        with suppress(KeyError):  # self['iqs'] may not exist
+            if self["iqs"]:  # if there are no IQ generators, don't print this section
+                lines.append("\n\t%d constant-IQ outputs:" % (len(self["iqs"])))
+                for iIQ, iq in enumerate(self["iqs"]):
+                    dacname = iq["dac"]
+                    dac = self["dacs"][dacname]
+                    lines.append("\t%d:\tfs=%.3f MHz" % (iIQ, iq["fs"]))
+                    lines.append("\t\t" + self._describe_dac(dacname))
+
+        with suppress(KeyError):  # self['readouts'] may not exist
+            lines.append("\n\t%d readout channels:" % (len(self["readouts"])))
+            for iReadout, readout in enumerate(self["readouts"]):
+                adcname = readout["adc"]
+                adc = self["adcs"][adcname]
+                buflen = readout["buf_maxlen"] / readout["f_output"]
+                if "tproc_ctrl" in readout:
+                    lines.append(
+                        "\t%d:\t%s - configured by tProc output %d"
+                        % (iReadout, readout["ro_type"], readout["tproc_ctrl"])
+                    )
+                else:
+                    lines.append(
+                        "\t%d:\t%s - configured by PYNQ"
+                        % (iReadout, readout["ro_type"])
+                    )
                 lines.append(
-                    "\t%d:\t%s - configured by tProc output %d"
-                    % (iReadout, readout["ro_type"], readout["tproc_ctrl"])
+                    "\t\tfs=%.3f MHz, decimated=%.3f MHz, %d-bit DDS, range=%.3f MHz"
+                    % (
+                        adc["fs"],
+                        readout["f_output"],
+                        readout["b_dds"],
+                        readout["f_dds"],
+                    )
                 )
-            else:
                 lines.append(
-                    "\t%d:\t%s - configured by PYNQ" % (iReadout, readout["ro_type"])
+                    "\t\t%s v%s (%s edge counter)"
+                    % (
+                        readout["avgbuf_type"],
+                        readout["avgbuf_version"],
+                        {False: "no", True: "has"}[readout["has_edge_counter"]],
+                    )
                 )
+                lines.append(
+                    "\t\tmaxlen %d accumulated, %d decimated (%.3f us)"
+                    % (readout["avg_maxlen"], readout["buf_maxlen"], buflen)
+                )
+                lines.append(
+                    "\t\ttriggered by %s %d, pin %d, feedback to tProc input %d"
+                    % (
+                        readout["trigger_type"],
+                        readout["trigger_port"],
+                        readout["trigger_bit"],
+                        readout["tproc_ch"],
+                    )
+                )
+                lines.append("\t\t" + self._describe_adc(adcname))
+
+        with suppress(KeyError):  # tproc may be an empty dict
+            lines.append("\n\t%d digital output pins:" % (len(tproc["output_pins"])))
+            for iPin, (porttype, port, pin, name) in enumerate(tproc["output_pins"]):
+                lines.append("\t%d:\t%s" % (iPin, name))
+                # lines.append("\t%d:\t%s (%s %d, pin %d)" % (iPin, name, porttype, port, pin))
+
             lines.append(
-                "\t\tfs=%.3f MHz, decimated=%.3f MHz, %d-bit DDS, range=%.3f MHz"
-                % (adc["fs"], readout["f_output"], readout["b_dds"], readout["f_dds"])
-            )
-            lines.append(
-                "\t\t%s v%s (%s edge counter)"
+                '\n\ttProc %s ("%s") rev %d: program memory %d words, data memory %d words'
                 % (
-                    readout["avgbuf_type"],
-                    readout["avgbuf_version"],
-                    {False: "no", True: "has"}[readout["has_edge_counter"]],
+                    tproc["type"],
+                    {"axis_tproc64x32_x8": "v1", "qick_processor": "v2"}[tproc["type"]],
+                    tproc["revision"],
+                    tproc["pmem_size"],
+                    tproc["dmem_size"],
                 )
             )
-            lines.append(
-                "\t\tmaxlen %d accumulated, %d decimated (%.3f us)"
-                % (readout["avg_maxlen"], readout["buf_maxlen"], buflen)
-            )
-            lines.append(
-                "\t\ttriggered by %s %d, pin %d, feedback to tProc input %d"
-                % (
-                    readout["trigger_type"],
-                    readout["trigger_port"],
-                    readout["trigger_bit"],
-                    readout["tproc_ch"],
-                )
-            )
-            lines.append("\t\t" + self._describe_adc(adcname))
+            lines.append("\t\texternal start pin: %s" % (tproc["start_pin"]))
 
-        lines.append("\n\t%d digital output pins:" % (len(tproc["output_pins"])))
-        for iPin, (porttype, port, pin, name) in enumerate(tproc["output_pins"]):
-            lines.append("\t%d:\t%s" % (iPin, name))
-            # lines.append("\t%d:\t%s (%s %d, pin %d)" % (iPin, name, porttype, port, pin))
-
-        lines.append(
-            '\n\ttProc %s ("%s") rev %d: program memory %d words, data memory %d words'
-            % (
-                tproc["type"],
-                {"axis_tproc64x32_x8": "v1", "qick_processor": "v2"}[tproc["type"]],
-                tproc["revision"],
-                tproc["pmem_size"],
-                tproc["dmem_size"],
-            )
-        )
-        lines.append("\t\texternal start pin: %s" % (tproc["start_pin"]))
-
-        bufnames = [ro["avgbuf_fullpath"] for ro in self["readouts"]]
         if "ddr4_buf" in self._cfg:
             buf = self["ddr4_buf"]
+            bufnames = [ro["avgbuf_fullpath"] for ro in self["readouts"]]
             buflist = [bufnames.index(x) for x in buf["readouts"]]
             buflen = buf["maxlen"] / self["readouts"][buflist[0]]["f_fabric"]
             lines.append(
@@ -238,6 +251,7 @@ class QickConfig:
 
         if "mr_buf" in self._cfg:
             buf = self["mr_buf"]
+            bufnames = [ro["avgbuf_fullpath"] for ro in self["readouts"]]
             buflist = [bufnames.index(x) for x in buf["readouts"]]
             buflen = (
                 buf["maxlen"] / self["adcs"][self["readouts"][buflist[0]]["adc"]]["fs"]
@@ -298,7 +312,7 @@ class QickConfig:
         int
             frequency step multiplier for the first channel
         """
-        # refclk = self["refclk_freq"]
+        refclk = self["refclk_freq"]
         # Calculate least common multiple of sampling frequencies.
 
         alldicts = [dict1] + other_dicts
@@ -824,6 +838,7 @@ class QickConfig:
         elif sel != "product":
             raise RuntimeError(
                 "sel parameter was specified for readout %d, which doesn't support this parameter"
+                % (ch)
             )
         # calculate phase register
         if "b_phase" in rocfg:
@@ -832,6 +847,7 @@ class QickConfig:
         elif phase != 0:
             raise RuntimeError(
                 "phase parameter was specified for readout %d, which doesn't support this parameter"
+                % (ch)
             )
         return ro_regs
 
@@ -923,7 +939,7 @@ class QickConfig:
                 # it's fine to set two PFB outputs to identical frequencies
                 continue
             if cfg2["pfb_ch"] == cfg1["pfb_ch"]:
-                # p = {k: [x[k] for x in [cfg1, cfg2]] for k in ["f_rounded", "f_folded"]}
+                p = {k: [x[k] for x in [cfg1, cfg2]] for k in ["f_rounded", "f_folded"]}
                 message = []
                 message.append("Two tones on same PFB channel:")
                 message.append(
@@ -1229,8 +1245,8 @@ class AbsQickProgram(ABC):
         sel="product",
         gen_ch=None,
         edge_counting=False,
-        high_threshold=None,
-        low_threshold=None,
+        high_threshold=0,
+        low_threshold=0,
     ):
         """Add a channel to the program's list of readouts.
         Duration units depend on the program type: tProc v1 programs use integer number of samples, tProc v2 programs use float us.
@@ -1990,7 +2006,7 @@ class AcquireMixin:
         # configure tproc for internal/external start
         soc.start_src(start_src)
 
-        # n_ro = len(self.ro_chs)
+        n_ro = len(self.ro_chs)
 
         total_count = functools.reduce(operator.mul, self.loop_dims)
         self.acc_buf = [
@@ -2028,13 +2044,13 @@ class AcquireMixin:
                 )
                 while count < total_count and not self.early_stop:
                     new_data = obtain(soc.poll_data())
-                    for new_points, (u, o) in new_data:
+                    for new_points, (d, s) in new_data:
                         for ii, nreads in enumerate(self.reads_per_shot):
                             # print(count, new_points, nreads, d[ii].shape, total_count)
-                            if new_points * nreads != u[ii].shape[0]:
+                            if new_points * nreads != d[ii].shape[0]:
                                 logger.error(
                                     "data size mismatch: new_points=%d, nreads=%d, data shape %s"
-                                    % (new_points, nreads, u[ii].shape)
+                                    % (new_points, nreads, d[ii].shape)
                                 )
                             if count + new_points > total_count:
                                 logger.error(
@@ -2047,13 +2063,13 @@ class AcquireMixin:
                             c_end = (count + new_points) * nreads
                             buf1d = self.acc_buf[ii].reshape((-1, 2))
                             try:
-                                buf1d[c_start:c_end] = u[ii]
+                                buf1d[c_start:c_end] = d[ii]
                             except Exception as e:
                                 print(e)
                                 num = buf1d[c_start:c_end].shape[0]
-                                buf1d[c_start:c_end] = u[ii][:num]
+                                buf1d[c_start:c_end] = d[ii][:num]
                         count += new_points
-                        self.stats.append(o)
+                        self.stats.append(s)
                         pbar.update(new_points)
 
             # if we're thresholding, apply the threshold before averaging

@@ -5,6 +5,7 @@ Several helper classes for writing qubit experiments.
 from typing import List, Union
 
 import numpy as np
+from qick import obtain
 
 from .asm_v1 import AcquireProgram, QickProgram, QickRegister, QickRegisterManagerMixin
 

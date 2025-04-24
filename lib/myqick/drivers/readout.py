@@ -4,8 +4,7 @@ Drivers for readouts (FPGA blocks that receive data from ADCs) and buffers (bloc
 
 import numpy as np
 from pynq.buffer import allocate
-
-from myqick import DummyIp, SocIp
+from qick import DummyIp, SocIp
 
 
 def _trace_trigger(soc, start_block):
@@ -943,8 +942,9 @@ class AxisAvgBufferV1pt1(AxisAvgBuffer):
         super().config_avg(address=address, length=length)
 
         self.avg_photon_mode_reg = edge_counting
-        self.avg_h_threshold_reg = high_threshold
-        self.avg_l_threshold_reg = low_threshold
+        if edge_counting:
+            self.avg_h_threshold_reg = high_threshold
+            self.avg_l_threshold_reg = low_threshold
 
 
 class MrBufferEt(SocIp):

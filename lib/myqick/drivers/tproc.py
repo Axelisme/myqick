@@ -5,8 +5,7 @@ Drivers for the QICK Timed Processor (tProc).
 
 import numpy as np
 from pynq.buffer import allocate
-
-from myqick import SocIp
+from qick import SocIp
 
 
 class AxisTProc64x32_x8(SocIp):
@@ -397,13 +396,16 @@ class Axis_QICK_Proc(SocIp):
             "divider",
             "arith",
             "time_read",
-            "tnet",
             "qcom",
             "custom_periph",
             "io_ctrl",
             "ext_flag",
         ]:
             self.cfg["has_" + param] = int(description["parameters"][param.upper()])
+        # parameter name was changed from TNET to QNET in rev 22
+        for param in ["tnet", "qnet"]:
+            if param.upper() in description["parameters"]:
+                self.cfg["has_qnet"] = int(description["parameters"][param.upper()])
         self.cfg["fifo_depth"] = pow(2, int(description["parameters"]["FIFO_DEPTH"]))
         self.cfg["call_depth"] = int(description["parameters"]["CALL_DEPTH"])
         self.cfg["debug"] = int(description["parameters"]["DEBUG"])
@@ -589,7 +591,7 @@ class Axis_QICK_Proc(SocIp):
             "has_divider",
             "has_arith",
             "has_time_read",
-            "has_tnet",
+            "has_qnet",
             "has_qcom",
         ]:
             lines.append("%-14s: %s" % (param, ["NO", "YES"][self.cfg[param]]))

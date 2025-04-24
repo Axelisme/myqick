@@ -1,11 +1,14 @@
 """
 Support functions.
 """
-from typing import Union, List
-import numpy as np
-import json
+
 import base64
+import json
 from collections import OrderedDict
+from typing import List, Union
+
+import numpy as np
+
 
 def to_int(val, scale, quantize=1, parname=None, trunc=False):
     """Convert a parameter value from user units to ASM units.
@@ -31,16 +34,17 @@ def to_int(val, scale, quantize=1, parname=None, trunc=False):
     int or QickRawParam
         ASM value
     """
-    if hasattr(val, 'to_int'):
+    if hasattr(val, "to_int"):
         return val.to_int(scale, quantize=quantize, parname=parname, trunc=trunc)
     else:
         if trunc:
-            return int(quantize * np.trunc(val*scale/quantize))
+            return int(quantize * np.trunc(val * scale / quantize))
         else:
-            return int(quantize * np.round(val*scale/quantize))
+            return int(quantize * np.round(val * scale / quantize))
 
-def check_bytes(val, length):
-    """Test if a signed int will fit in the specified number of bytes.
+
+def check_bytes(val, length, signed=True):
+    """Test if an int will fit in the specified number of bytes.
 
     Parameters
     ----------
@@ -48,6 +52,8 @@ def check_bytes(val, length):
         value to test
     length : int
         number of bytes
+    signed : bool
+        use signed int
 
     Returns
     -------
@@ -55,15 +61,16 @@ def check_bytes(val, length):
         True if value will fit, False otherwise
     """
     try:
-        int(val).to_bytes(length=length, byteorder='little', signed=True)
+        int(val).to_bytes(length=length, byteorder="little", signed=signed)
         return True
     except OverflowError:
         return False
 
+
 def cosine(length=100, maxv=30000):
     """
     Create a numpy array containing a cosine shaped envelope function
-    
+
     :param length: Length of array
     :type length: int
     :param maxv: Maximum amplitude of cosine flattop function
@@ -71,8 +78,8 @@ def cosine(length=100, maxv=30000):
     :return: Numpy array containing a cosine flattop function
     :rtype: numpy.ndarray
     """
-    x = np.linspace(0,2*np.pi,length)
-    y = maxv*(1-np.cos(x))/2
+    x = np.linspace(0, 2 * np.pi, length)
+    y = maxv * (1 - np.cos(x)) / 2
     return y
 
 
@@ -92,7 +99,7 @@ def gauss(mu=0, si=25, length=100, maxv=30000):
     :rtype: numpy.ndarray
     """
     x = np.arange(0, length)
-    y = maxv * np.exp(-(x-mu)**2/(2*si**2))
+    y = maxv * np.exp(-((x - mu) ** 2) / (2 * si**2))
     return y
 
 
@@ -117,9 +124,9 @@ def DRAG(mu, si, length, maxv, delta, alpha):
     :rtype: numpy.ndarray, numpy.ndarray
     """
     x = np.arange(0, length)
-    gaus = maxv * np.exp(-(x-mu)**2/(2*si**2))
+    gaus = maxv * np.exp(-((x - mu) ** 2) / (2 * si**2))
     # derivative of the gaussian
-    dgaus = -(x-mu)/(2*si**2)*gaus
+    dgaus = -(x - mu) / (2 * si**2) * gaus
     idata = gaus
     qdata = -1 * alpha * dgaus / delta
     return idata, qdata
@@ -144,14 +151,16 @@ def triang(length=100, maxv=30000):
 
     y1 = np.linspace(0, maxv, halflength)
     y[:halflength] = y1
-    y[length//2:length] = np.flip(y1)
+    y[length // 2 : length] = np.flip(y1)
     return y
+
 
 class NpEncoder(json.JSONEncoder):
     """
     JSON encoder with support for numpy objects and custom classes with to_dict methods.
     Taken from https://stackoverflow.com/questions/50916422/python-typeerror-object-of-type-int64-is-not-json-serializable
     """
+
     def default(self, obj):
         if isinstance(obj, np.integer):
             return int(obj)
@@ -165,12 +174,14 @@ class NpEncoder(json.JSONEncoder):
             return obj.to_dict()
         return super().default(obj)
 
+
 def decode_array(json_array):
     """
     Convert a base64-encoded array back into numpy.
     """
     data, shape, dtype = json_array
     return np.frombuffer(base64.b64decode(data), dtype=np.dtype(dtype)).reshape(shape)
+
 
 def progs2json(proglist):
     """Dump QICK programs to a JSON string.
@@ -187,6 +198,7 @@ def progs2json(proglist):
     """
     return json.dumps(proglist, cls=NpEncoder)
 
+
 def json2progs(s):
     """Read QICK programs from JSON.
 
@@ -200,7 +212,7 @@ def json2progs(s):
     list of dict
         A list of program dictionaries.
     """
-    if hasattr(s, 'read'):
+    if hasattr(s, "read"):
         # input is file-like, we should use json.load()
         # be sure to read dicts back in order (only matters for Python <3.7)
         proglist = json.load(s, object_pairs_hook=OrderedDict)
@@ -210,6 +222,7 @@ def json2progs(s):
         proglist = json.loads(s, object_pairs_hook=OrderedDict)
 
     return proglist
+
 
 def ch2list(ch: Union[List[int], int]) -> List[int]:
     """
@@ -225,6 +238,7 @@ def ch2list(ch: Union[List[int], int]) -> List[int]:
     except TypeError:
         ch_list = ch
     return ch_list
+
 
 def check_keys(keys, required, optional):
     """Check whether the keys defined for a pulse are supported and sufficient for this generator and pulse type.
@@ -247,24 +261,24 @@ def check_keys(keys, required, optional):
     if defined - allowed:
         raise RuntimeError("unsupported pulse parameter(s)", defined - allowed)
 
+
 def nqz(f, fs):
-    """Compute the Nyquist zone of a given frequency.
-    """
-    return int(f/(fs/2) + 1)
+    """Compute the Nyquist zone of a given frequency."""
+    return int(f / (fs / 2) + 1)
+
 
 def folded_freq(f, fs):
-    """Compute the zone-1 Nyquist image of a given frequency.
-    """
+    """Compute the zone-1 Nyquist image of a given frequency."""
     f_nqz = nqz(f, fs)
-    if f_nqz%2 == 0:
+    if f_nqz % 2 == 0:
         f_folded = -f
     else:
         f_folded = f
-    f_folded %= (fs/2)
+    f_folded %= fs / 2
     return f_folded
 
+
 def nyquist_image(f, fs, nqz):
-    """Compute the Nyquist image of a given frequency in the specified zone.
-    """
+    """Compute the Nyquist image of a given frequency in the specified zone."""
     f_folded = folded_freq(f, fs)
-    return -f_folded*((-1)**nqz) + fs*(nqz//2)
+    return -f_folded * ((-1) ** nqz) + fs * (nqz // 2)

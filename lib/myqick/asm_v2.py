@@ -555,6 +555,9 @@ class QickPulse(SimpleClass):
             ]
         self.params = params
         self.waveforms = []
+        # channels that this pulse can be played on
+        self.gen_chs = None
+        self.ro_chs = None
 
     def add_wave(self, waveform):
         """Add a Waveform or a waveform name to this pulse."""
@@ -861,9 +864,9 @@ class OpenLoop(Macro):
 
     def expand(self, prog):
         insts = []
-        prog.loop_stack.append(self.name)
+        prog.loop_stack.append((self.name, self.n))
         # initialize the loop counter to zero and set the loop label
-        insts.append(WriteReg(dst=self.name, src=self.n))
+        insts.append(WriteReg(dst=self.name, src=0))
         label = self.name
         insts.append(Label(label=label))
         return insts
@@ -874,7 +877,7 @@ class CloseLoop(Macro):
         insts = []
 
         # the loop we're closing is the one at the top of the loop stack
-        lname = prog.loop_stack.pop()
+        lname, lcount = prog.loop_stack.pop()
         label = lname
 
         # check for wave sweeps
@@ -910,20 +913,24 @@ class CloseLoop(Macro):
 
         # increment and test the loop counter
         reg = prog.reg_dict[lname].full_addr()
+        # test i-n
+        insts.append(
+            AsmInst(
+                inst={"CMD": "TEST", "OP": "%s - #%d" % (reg, lcount - 1)}, addr_inc=1
+            )
+        )
+        # if i!=n, jump to the start and increment i
         insts.append(
             AsmInst(
                 inst={
-                    "CMD": "REG_WR",
-                    "DST": reg,
-                    "SRC": "op",
-                    "OP": f"{reg} - #1",
-                    "UF": "1",
+                    "CMD": "JUMP",
+                    "LABEL": label,
+                    "IF": "NZ",
+                    "WR": "%s op" % (reg),
+                    "OP": "%s + #1" % (reg),
                 },
                 addr_inc=1,
             )
-        )
-        insts.append(
-            AsmInst(inst={"CMD": "JUMP", "LABEL": label, "IF": "NZ"}, addr_inc=1)
         )
 
         # if we swept a parameter, we should restore it to its original value
@@ -1059,11 +1066,12 @@ class Wait(TimedMacro):
                 wait = None
             else:
                 wait += max_t
-        if wait.is_sweep():
+        if wait is not None and wait.is_sweep():
             # TODO: maybe rounding up should be optional?
             # TODO: track wait time in timestamps and do safety checks vs. sync and pulse times?
             waitmax = wait.maxval()
             if not self.no_warn:
+                # TODO: now that we support register arguments, we could do swept waits
                 logger.warning(
                     "WAIT can only take a scalar argument, but in this case it would be %s, so rounding up to the max val of %f."
                     % (wait, waitmax)
@@ -1078,19 +1086,108 @@ class Wait(TimedMacro):
             # if this was a wait_auto and we have no relevant channels, it should compile to nothing
             return []
         elif isinstance(t_reg, int):
-            return [
-                AsmInst(
-                    inst={
-                        "CMD": "WAIT",
-                        "ADDR": f"&{prog.p_addr + 1}",
-                        "C_OP": "time",
-                        "TIME": f"@{t_reg}",
-                    },
-                    addr_inc=2,
+            if check_bytes(t_reg, 3):
+                src = "@%d" % (t_reg)
+                return [
+                    AsmInst(
+                        inst={
+                            "CMD": "WAIT",
+                            "ADDR": f"&{prog.p_addr + 1}",
+                            "C_OP": "time",
+                            "TIME": src,
+                        },
+                        addr_inc=2,
+                    )
+                ]
+            elif check_bytes(t_reg, 4):
+                # we need to write to a scratch register
+                # WAIT with a register argument is not supported by the assembler, but we can translate to basic instructions ourselves
+                insts = []
+                # constrain the value to signed 32-bit
+                trunc = np.int64(t_reg).astype(np.int32)
+                prog.add_reg("scratch", allow_reuse=True)
+                src = prog._get_reg("scratch")
+                insts.append(
+                    WriteReg(dst="scratch", src=trunc - Assembler.WAIT_TIME_OFFSET)
                 )
-            ]
+                insts.append(
+                    AsmInst(inst={"CMD": "TEST", "OP": "s11 - %s" % (src)}, addr_inc=1)
+                )
+                # note that because this translates to three instructions, ADDR needs to be incremented by 2 (as opposed to 1 in the literal-time case)
+                insts.append(
+                    AsmInst(
+                        inst={
+                            "CMD": "JUMP",
+                            "OP": "s11 - %s" % (src),
+                            "IF": "S",
+                            "UF": "1",
+                            "ADDR": f"&{prog.p_addr + 2}",
+                        },
+                        addr_inc=1,
+                    )
+                )
+                return insts
+            else:
+                raise RuntimeError(
+                    "WAIT argument (%d ticks) is too big to fit in a 32-bit signed int"
+                    % (t_reg)
+                )
         else:
             raise RuntimeError("WAIT can only take a scalar argument, not a sweep")
+
+
+class Resync(TimedMacro):
+    # t, auto, gens, ros (last two only defined if auto=True)
+    def preprocess(self, prog):
+        delay = self.t
+        if isinstance(delay, Number):
+            delay = QickParam(delay)
+        delay_rounded = self.convert_time(prog, delay, "t")
+        prog.decrement_timestamps(delay_rounded)
+        # TODO: can we be smarter with timestamps?
+
+    def expand(self, prog):
+        t = self.t_regs["t"]
+        prog.add_reg("scratch", allow_reuse=True)
+        s_reg = prog._get_reg("scratch")
+        u_reg = prog._get_reg("s_usr_time")
+        insts = []
+        if isinstance(t, int):
+            t_reg = "#%d" % (t)
+        else:
+            t_reg = prog._get_reg(t)
+        # set scratch register to the current time plus t
+        insts.append(
+            AsmInst(
+                inst={
+                    "CMD": "REG_WR",
+                    "DST": s_reg,
+                    "SRC": "op",
+                    "OP": "%s + %s" % (u_reg, t_reg),
+                    "UF": "1",
+                },
+                addr_inc=1,
+            )
+        )
+        # if result is negative (i.e. we already had sufficient slack), set it to zero
+        insts.append(
+            AsmInst(
+                inst={
+                    "CMD": "REG_WR",
+                    "DST": s_reg,
+                    "SRC": "op",
+                    "OP": "s0",
+                    "IF": "S",
+                },
+                addr_inc=1,
+            )
+        )
+        # insts.append(AsmInst(inst={'CMD':'REG_WR', 'DST':s_reg, 'SRC':'imm', 'LIT':'#0', 'IF':'S'}, addr_inc=1))
+        # apply the computed delay
+        insts.append(
+            AsmInst(inst={"CMD": "TIME", "C_OP": "inc_ref", "R1": s_reg}, addr_inc=1)
+        )
+        return insts
 
 
 # pulses and triggers
@@ -1099,7 +1196,17 @@ class Wait(TimedMacro):
 class Pulse(TimedMacro):
     # ch, name, t
     def preprocess(self, prog):
-        pulse_length = prog.pulses[self.name].get_length()  # in us
+        if self.name not in prog.pulses:
+            raise RuntimeError(
+                "trying to play pulse %s, but it hasn't been defined" % (self.name)
+            )
+        pulse = prog.pulses[self.name]
+        if pulse.gen_chs is None or self.ch not in pulse.gen_chs:
+            raise RuntimeError(
+                "trying to play pulse %s on generator %d, but the pulse was only defined for gens %s"
+                % (self.name, self.ch, pulse.gen_chs)
+            )
+        pulse_length = pulse.get_length()  # in us
         ts = prog.get_timestamp(gen_ch=self.ch)
         t = self.t
         if t == "auto":
@@ -1550,7 +1657,7 @@ class AsmV2:
 
         Parameters
         ----------
-        t : float
+        t : float or QickParam
             time (us)
         tag: str
             arbitrary name for use with get_time_param()
@@ -1563,7 +1670,7 @@ class AsmV2:
 
         Parameters
         ----------
-        t : float
+        t : float or QickParam
             time (us)
         gens : bool
             check the ends of generator pulses
@@ -1606,6 +1713,31 @@ class AsmV2:
         self.append_macro(
             Wait(t=t, auto=True, gens=gens, ros=ros, tag=tag, no_warn=no_warn)
         )
+
+    def resync(self, t=0.05, tag=None):
+        """Apply the appropriate delay to create some slack between the execution and reference times.
+        In other words, increment the reference time to ensure it exceeds the execution time by at least t.
+        This will never decrement the reference time, so if the slack already exceeded t it won't change.
+
+        This is useful if your program waits for external input for an unknown time.
+        Without resyncing, you run the risk that you will run out of slack and your future timed instructions will pile up on each other.
+
+        Cautions:
+
+        * The appropriate delay is computed at execution time, so it is not generally possible to determine at compile time how much delay will be added.
+        * The amount of delay added will fluctuate by tens of ns.
+        * If t=0, you will probably end up with a small negative slack due to this macro's execution time. Better to keep t positive (the default is safe).
+
+        If you know (or can put an upper bound on) how long your program waits, you may prefer to use delay().
+
+        Parameters
+        ----------
+        t : float or QickParam
+            time (us)
+        tag: str
+            arbitrary name for use with get_time_param()
+        """
+        self.append_macro(Resync(t=t, tag=tag))
 
     # pulses and triggers
 
@@ -1783,6 +1915,13 @@ class AbsGenManager(AbsRegisterManager):
         # dictionary of defined envelopes
         self.envelopes = prog.envelopes[gen_ch]["envs"]
 
+        # a hashable value that can be used to check whether different generators are of the same type+configuration
+        self.cfg_hash = (self.chcfg["type"], self.chcfg["fs"])
+
+    def param_hash(self, params):
+        """Returns a hashable value that can be used to check whether the same set of parameters will result in the same pulse definition on different generators."""
+        return None
+
     def check_params(self, params):
         """Check whether the parameters defined for a pulse are supported and sufficient for this generator and pulse type.
         Raise an exception if there is a problem.
@@ -1828,6 +1967,16 @@ class StandardGenManager(AbsGenManager):
         "flat_top": ["ro_ch", "phrst", "stdysel"],
     }
     PARAMS_NUMERIC = ["freq", "phase", "gain", "length"]
+
+    def param_hash(self, params):
+        """Returns a hashable value that can be used to check whether the same set of parameters will result in the same pulse definition on different generators."""
+        if "envelope" in params:
+            env = self.envelopes[params["envelope"]]
+            env_length = env["data"].shape[0]
+            env_addr = env["addr"]
+            return (env_addr, env_length)
+        else:
+            return None
 
     def params2wave(
         self,
@@ -2189,18 +2338,20 @@ class QickProgramV2(AsmV2, AbsQickProgram):
     # downconversion frequencies are negative
     FLIP_DOWNCONVERSION = True
 
+    # supported revisions of the tProc v2 core
+    ASM_REVISIONS = [21, 22, 23]
+
     def __init__(self, soccfg):
         super().__init__(soccfg)
 
-        ASM_REVISION = 21
         if self.tproccfg["type"] != "qick_processor":
             raise RuntimeError(
                 "tProc v2 programs can only be run on a tProc v2 firmware"
             )
-        if self.tproccfg["revision"] != ASM_REVISION:
+        if self.tproccfg["revision"] not in self.ASM_REVISIONS:
             raise RuntimeError(
-                "this version of the QICK library only supports tProc v2 revision %d, you have %d"
-                % (ASM_REVISION, self.tproccfg["revision"])
+                "this version of the QICK library only supports tProc v2 revisions in the list %s, you have %d"
+                % (self.ASM_REVISIONS, self.tproccfg["revision"])
             )
 
         # all current v1 programs are processed in one pass:
@@ -2459,20 +2610,32 @@ class QickProgramV2(AsmV2, AbsQickProgram):
             name of the pulse
         waveforms : list of Waveform or str
             waveforms that will be concatenated for this pulse
-        gen_ch : int
+        gen_ch : int or list of int
             generator channel (index in 'gens' list)
-        ro_ch : int
+        ro_ch : int or list of int
             readout channel (index in 'readouts' list)
         """
         ch_mgr = None
+        gen_chs = []
+        ro_chs = []
         if gen_ch is not None and ro_ch is not None:
             raise RuntimeError("can't specify both gen_ch and ro_ch!")
         elif gen_ch is not None:
-            ch_mgr = self._gen_mgrs[gen_ch]
+            if isinstance(gen_ch, Number):
+                gen_chs = [gen_ch]
+            else:
+                gen_chs = gen_ch
+            ch_mgr = self._gen_mgrs[gen_chs[0]]
         elif ro_ch is not None:
-            ch_mgr = self._ro_mgrs[ro_ch]
+            if isinstance(ro_ch, Number):
+                ro_chs = [ro_ch]
+            else:
+                ro_chs = ro_ch
+            ch_mgr = self._ro_mgrs[ro_chs[0]]
 
         pulse = QickPulse(self, ch_mgr)
+        pulse.gen_chs = gen_chs
+        pulse.ro_chs = ro_chs
         for w in waveforms:
             pulse.add_wave(w)
         self._register_pulse(pulse, name)
@@ -2483,8 +2646,11 @@ class QickProgramV2(AsmV2, AbsQickProgram):
 
         Parameters
         ----------
-        ch : int
-            generator channel (index in 'gens' list)
+        ch : int or list of int
+            Generator channel (index in 'gens' list).
+            The use of one pulse definition for multiple generators is experimental.
+            The generators must be of the same type and running at the same sampling frequency,
+            and if an envelope is used it must be defined on all generators at the same address.
         name : str
             name of the pulse
         ro_ch : int or None, optional
@@ -2512,8 +2678,26 @@ class QickProgramV2(AsmV2, AbsQickProgram):
         mask : list of int
             for a muxed signal generator, the list of tones to enable for this pulse
         """
-        pulse = self._gen_mgrs[ch].make_pulse(kwargs)
-        self._register_pulse(pulse, name)
+        if isinstance(ch, Number):
+            pulse = self._gen_mgrs[ch].make_pulse(kwargs)
+            pulse.gen_chs = [ch]
+            self._register_pulse(pulse, name)
+        else:  # list of channels
+            distinct_cfgs = len(set([self._gen_mgrs[x].cfg_hash for x in ch]))
+            if distinct_cfgs != 1:
+                raise RuntimeError(
+                    "tried to define a pulse for generators %s, but they have different types or sampling freqs"
+                    % (ch)
+                )
+            distinct_pars = len(set([self._gen_mgrs[x].param_hash(kwargs) for x in ch]))
+            if distinct_pars != 1:
+                raise RuntimeError(
+                    "tried to define a pulse for generators %s, but they can't all use the same pulse definition: if you're using an envelope, maybe it is not the same length or at the same address in all gens?"
+                    % (ch)
+                )
+            pulse = self._gen_mgrs[ch[0]].make_pulse(kwargs)
+            pulse.gen_chs = ch
+            self._register_pulse(pulse, name)
 
     def add_readoutconfig(self, ch, name, **kwargs):
         """Add a readout config to the program's pulse library.
@@ -2541,6 +2725,7 @@ class QickProgramV2(AsmV2, AbsQickProgram):
             generator channel (use None if you don't want the downconversion frequency to be rounded to a valid DAC frequency or be offset by the DAC mixer frequency)
         """
         pulse = self._ro_mgrs[ch].make_pulse(kwargs)
+        pulse.ro_chs = [ch]
         self._register_pulse(pulse, name)
 
     def list_pulse_waveforms(self, pulsename, exclude_special=True):

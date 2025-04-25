@@ -8,7 +8,8 @@ import numpy as np
 import xrfclk
 from pynq.buffer import allocate
 from pynq.overlay import DefaultIP, Overlay
-from qick.ipq_pynq_utils.ipq_pynq_utils import clock_models
+
+from myqick.ipq_pynq_utils.ipq_pynq_utils import clock_models
 
 from .qick import QickSoc, SocIp
 from .qick_asm import QickConfig

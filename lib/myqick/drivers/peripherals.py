@@ -7,7 +7,8 @@ import re
 
 import numpy as np
 from pynq.buffer import allocate
-from qick import SocIp
+
+from myqick import SocIp
 
 
 class QICK_Time_Tagger(SocIp):

@@ -6,7 +6,8 @@ import logging
 
 import numpy as np
 from pynq.overlay import DefaultIP
-from qick import obtain
+
+from myqick import obtain
 
 from .qick_asm import DummyIp
 

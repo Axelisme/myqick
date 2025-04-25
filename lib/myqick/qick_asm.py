@@ -13,8 +13,9 @@ from collections import OrderedDict, defaultdict, namedtuple
 from contextlib import suppress
 
 import numpy as np
-from qick import get_version, obtain
 from tqdm.auto import tqdm
+
+from myqick import get_version, obtain
 
 from .helpers import (
     DRAG,

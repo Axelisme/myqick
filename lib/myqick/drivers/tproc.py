@@ -5,7 +5,8 @@ Drivers for the QICK Timed Processor (tProc).
 
 import numpy as np
 from pynq.buffer import allocate
-from qick import SocIp
+
+from myqick import SocIp
 
 
 class AxisTProc64x32_x8(SocIp):

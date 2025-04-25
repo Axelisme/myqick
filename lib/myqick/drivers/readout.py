@@ -4,7 +4,8 @@ Drivers for readouts (FPGA blocks that receive data from ADCs) and buffers (bloc
 
 import numpy as np
 from pynq.buffer import allocate
-from qick import DummyIp, SocIp
+
+from myqick import DummyIp, SocIp
 
 
 def _trace_trigger(soc, start_block):

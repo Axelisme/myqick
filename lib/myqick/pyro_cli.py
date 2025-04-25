@@ -4,7 +4,7 @@
 import getopt
 import sys
 
-from qick.pyro import start_server
+from myqick.pyro import start_server
 
 ns_host = None
 ns_port = None

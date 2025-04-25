@@ -4,7 +4,8 @@ Drivers for signal generators: FPGA blocks that send data to DACs.
 
 import numpy as np
 from pynq.buffer import allocate
-from qick import SocIp
+
+from myqick import SocIp
 
 
 class AbsSignalGen(SocIp):

@@ -1942,6 +1942,11 @@ class AcquireMixin:
         """
         return self.shots
 
+    def set_early_stop(self) -> None:
+        # tell program to return as soon as possible
+        print("Program received early stop signal")
+        self.early_stop = True
+
     def acquire(
         self,
         soc,
